@@ -1,87 +1,131 @@
-import { db, storage } from '../config/firebase'
-import {
-  collection, addDoc, getDocs, getDoc,
-  doc, updateDoc, query, where, orderBy, limit
-} from 'firebase/firestore'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+// src/services/firebaseService.js - Simplified version
+import { 
+  collection, addDoc, getDocs, doc, getDoc, setDoc, updateDoc,
+  query, where, limit, serverTimestamp
+} from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../config/firebase';
 
-export const submitWasteReport = async (reportData) => {
-  return await addDoc(collection(db, 'wasteReports'), {
-    ...reportData,
-    createdAt: new Date(),
-    status: 'pending',
-  })
-}
+export const firebaseService = {
+  async createUserProfile(userId, userData) {
+    await setDoc(doc(db, 'users', userId), {
+      ...userData,
+      ecoPoints: 0,
+      badge: 'Eco Rookie',
+      createdAt: serverTimestamp(),
+    });
+  },
 
-export const getWasteReports = async () => {
-  const snapshot = await getDocs(collection(db, 'wasteReports'))
-  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-}
+  async getUserProfile(userId) {
+    const docRef = doc(db, 'users', userId);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists() ? { uid: userId, ...docSnap.data() } : null;
+  },
 
-export const getUserPoints = async (userId) => {
-  const docRef = doc(db, 'users', userId)
-  const snap = await getDoc(docRef)
-  return snap.exists() ? snap.data().ecoPoints ?? 0 : 0
-}
+  async updateUserProfile(userId, data) {
+    await updateDoc(doc(db, 'users', userId), data);
+  },
 
-export const addEcoPoints = async (userId, points) => {
-  const docRef = doc(db, 'users', userId)
-  const snap = await getDoc(docRef)
-  const current = snap.exists() ? snap.data().ecoPoints ?? 0 : 0
-  return await updateDoc(docRef, { ecoPoints: current + points })
-}
+  async updateUserPoints(userId, pointsToAdd) {
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    const currentPoints = userDoc.data()?.ecoPoints || 0;
+    const newPoints = currentPoints + pointsToAdd;
+    await updateDoc(userRef, { ecoPoints: newPoints });
+    return newPoints;
+  },
 
-export const getLeaderboard = async (limitCount = 10) => {
-  const q = query(collection(db, 'users'), orderBy('ecoPoints', 'desc'), limit(limitCount))
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-}
+  async createVerificationReport(data, imageFile) {
+    let imageUrl = null;
+    if (imageFile) {
+      const storageRef = ref(storage, `verifications/${Date.now()}_${imageFile.name}`);
+      await uploadBytes(storageRef, imageFile);
+      imageUrl = await getDownloadURL(storageRef);
+    }
+    const docRef = await addDoc(collection(db, 'verificationReports'), {
+      ...data, imageUrl, timestamp: serverTimestamp()
+    });
+    return { id: docRef.id };
+  },
 
-export const uploadImage = async (file, path) => {
-  const storageRef = ref(storage, path)
-  await uploadBytes(storageRef, file)
-  return await getDownloadURL(storageRef)
-}
+  async getVerificationHistory(userId) {
+    const q = query(collection(db, 'verificationReports'), where('userId', '==', userId), limit(50));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
 
-export const getMarketplaceItems = async () => {
-  const snapshot = await getDocs(collection(db, 'marketplace'))
-  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-}
+  async getMarketplaceListings() {
+    const snapshot = await getDocs(collection(db, 'marketplace'));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
 
-export const getEvents = async () => {
-  const q = query(collection(db, 'events'), orderBy('date', 'asc'))
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-}
+  async getUpcomingEvents() {
+    const snapshot = await getDocs(collection(db, 'events'));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
 
-// --- User Reports (for Carbon Tracker) ---
-export const getUserReports = async (userId) => {
-  const q = query(collection(db, 'wasteReports'), where('userId', '==', userId))
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-}
+  async getLeaderboard() {
+    const snapshot = await getDocs(collection(db, 'users'));
+    const users = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+    return users.sort((a, b) => (b.ecoPoints || 0) - (a.ecoPoints || 0)).slice(0, 50);
+  },
 
-// --- Weekly Challenges ---
-export const getWeeklyChallenges = async () => {
-  const snapshot = await getDocs(collection(db, 'weeklyChallenges'))
-  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-}
+  async getStatistics() {
+    const users = await getDocs(collection(db, 'users'));
+    const reports = await getDocs(collection(db, 'reports'));
+    const verifications = await getDocs(collection(db, 'verificationReports'));
+    const marketplace = await getDocs(collection(db, 'marketplace'));
+    return {
+      totalUsers: users.size,
+      totalReports: reports.size,
+      totalVerifications: verifications.size,
+      totalMarketplaceItems: marketplace.size,
+    };
+  },
 
-export const getUserChallengeProgress = async (userId) => {
-  const docRef = doc(db, 'users', userId)
-  const snap = await getDoc(docRef)
-  return snap.exists() ? snap.data().challengeProgress ?? {} : {}
-}
+  async createWasteReport(data, imageFile) {
+    const docRef = await addDoc(collection(db, 'reports'), { ...data, createdAt: serverTimestamp() });
+    return { id: docRef.id };
+  },
 
-export const updateChallengeProgress = async (userId, challengeId, value) => {
-  const docRef = doc(db, 'users', userId)
-  return await updateDoc(docRef, {
-    [`challengeProgress.${challengeId}`]: value,
-  })
-}
+  async getMyListings(ownerId) {
+    const q = query(collection(db, 'marketplace'), where('ownerId', '==', ownerId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
 
-// --- FCM Token ---
-export const saveFCMToken = async (userId, token) => {
-  const docRef = doc(db, 'users', userId)
-  return await updateDoc(docRef, { fcmToken: token })
-}
+  async getReports() {
+    const snapshot = await getDocs(collection(db, 'reports'));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  async createEvent(data) {
+    const docRef = await addDoc(collection(db, 'events'), data);
+    return { id: docRef.id };
+  },
+
+  async joinEvent(eventId, userId) {
+    const eventRef = doc(db, 'events', eventId);
+    const eventDoc = await getDoc(eventRef);
+    const participants = eventDoc.data()?.participants || [];
+    if (!participants.includes(userId)) {
+      await updateDoc(eventRef, { participants: [...participants, userId] });
+    }
+  },
+
+  async createMarketplaceListing(data, imageFile) {
+    let imageUrl = null;
+    if (imageFile) {
+      const storageRef = ref(storage, `marketplace/${Date.now()}_${imageFile.name}`);
+      await uploadBytes(storageRef, imageFile);
+      imageUrl = await getDownloadURL(storageRef);
+    }
+    const docRef = await addDoc(collection(db, 'marketplace'), { ...data, imageUrl, createdAt: serverTimestamp() });
+    return { id: docRef.id };
+  },
+
+  async claimListing(listingId, claimantId) {
+    const listingRef = doc(db, 'marketplace', listingId);
+    await updateDoc(listingRef, { status: 'claimed', claimantId, claimedAt: serverTimestamp() });
+  },
+};

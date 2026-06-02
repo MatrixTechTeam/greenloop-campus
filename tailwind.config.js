@@ -1,3 +1,4 @@
+// tailwind.config.js
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -6,32 +7,25 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        // Remove custom fonts, use system defaults
+        sans: ['system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+      },
       colors: {
         primary: {
-          50:  '#f0fdf4',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
-          800: '#166534',
-          900: '#14532d',
+          50: '#ecfdf5',
+          100: '#d1fae5',
+          200: '#a7f3d0',
+          300: '#6ee7b7',
+          400: '#34d399',
+          500: '#10b981',
+          600: '#059669',
+          700: '#047857',
+          800: '#065f46',
+          900: '#064e3b',
         },
-        eco: {
-          leaf:  '#2d6a4f',
-          moss:  '#52b788',
-          bark:  '#8b5e3c',
-          sand:  '#f4e9cd',
-          sky:   '#90e0ef',
-        }
-      },
-      fontFamily: {
-        sans: ['Plus Jakarta Sans', 'sans-serif'],
-        display: ['Syne', 'sans-serif'],
       },
     },
   },
   plugins: [],
-}
+};
