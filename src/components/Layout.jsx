@@ -1,211 +1,226 @@
-// src/components/Layout.jsx - Responsive with Hamburger Menu
+// src/components/Layout.jsx - Simplified without animations
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { firebaseService } from '../services/firebaseService';
 import { 
-  Menu, X, Leaf, LogOut, Home, FileText, Camera, Store, 
-  Trophy, Calendar, User, Shield 
+  Menu, Leaf, LogOut, Home, FileText, Camera, Store, 
+  Trophy, Calendar, User, Shield, Bell, Search
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const Layout = () => {
-  const { userProfile, logout } = useAuth();
+  const { currentUser, userProfile, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Check if mobile on mount and resize
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-      if (window.innerWidth >= 768) {
-        setSidebarOpen(true);
-      } else {
-        setSidebarOpen(false);
-      }
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    fetchNotifications();
+  }, [currentUser]);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Close sidebar on route change on mobile
-  useEffect(() => {
-    if (isMobile) {
-      setSidebarOpen(false);
+  const fetchNotifications = async () => {
+    if (!currentUser) return;
+    try {
+      const notifs = await firebaseService.getUserNotifications(currentUser.uid);
+      setNotifications(notifs || []);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoading(false);
     }
-  }, [location.pathname, isMobile]);
-
-  // Prevent body scroll when sidebar is open on mobile
-  useEffect(() => {
-    if (isMobile && sidebarOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [sidebarOpen, isMobile]);
+  };
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
 
+  const unreadCount = notifications.filter(n => !n.read).length;
+
   const navItems = [
     { path: '/dashboard', icon: Home, label: 'Dashboard' },
     { path: '/report', icon: FileText, label: 'Report Waste' },
     { path: '/verify', icon: Camera, label: 'Verify' },
-    { path: '/marketplace', icon: Store, label: 'Marketplace' },
+    { path: '/marketplace', icon: Store, label: 'Exchange' },
     { path: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
     { path: '/events', icon: Calendar, label: 'Events' },
     { path: '/profile', icon: User, label: 'Profile' },
   ];
-
-  // Add admin nav item if user is admin
+  
   if (userProfile?.role === 'admin') {
-    navItems.push({ path: '/admin', icon: Shield, label: 'Admin Panel' });
+    navItems.push({ path: '/admin', icon: Shield, label: 'Admin' });
   }
 
-  // Overlay for mobile sidebar
-  const Overlay = () => (
-    <div 
-      className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ${
-        sidebarOpen && isMobile ? 'opacity-100 visible' : 'opacity-0 invisible'
-      }`}
-      onClick={() => setSidebarOpen(false)}
-    />
-  );
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="spinner"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50/50 via-white to-sage-50/30">
-      {/* Mobile Header with Hamburger */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-md border-b border-gray-100 z-50">
-        <div className="flex items-center justify-between px-4 py-3">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors tap-target"
-            aria-label="Open menu"
-          >
-            <Menu size={24} className="text-gray-700" />
-          </button>
-          
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* Top Navigation Bar */}
+      <div 
+        className={`fixed top-0 right-0 left-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-200 transition-all duration-300 ${
+          scrolled ? 'shadow-md' : ''
+        }`}
+        style={{ left: sidebarCollapsed ? '80px' : '280px' }}
+      >
+        <div className="flex items-center justify-between px-6 py-3">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)} 
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Menu size={20} />
+            </button>
+            <div className="relative">
+              <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input 
+                type="text" 
+                placeholder="Search..." 
+                className="pl-10 pr-4 py-2 bg-gray-100 rounded-lg text-sm w-80 focus:outline-none focus:ring-2 focus:ring-primary-500" 
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)} 
+                className="p-2 hover:bg-gray-100 rounded-lg relative"
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+              {showNotifications && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-200 z-50">
+                  <div className="p-3 border-b border-gray-100">
+                    <h3 className="font-semibold">Notifications</h3>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="p-4 text-center text-gray-500">No notifications</p>
+                    ) : (
+                      notifications.map(notif => (
+                        <div 
+                          key={notif.id} 
+                          className={`p-3 border-b border-gray-100 hover:bg-gray-50 ${!notif.read ? 'bg-primary-50' : ''}`}
+                        >
+                          <p className="text-sm font-medium">{notif.title}</p>
+                          <p className="text-xs text-gray-500 mt-1">{notif.message}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
+              <div className="text-right">
+                <p className="text-sm font-semibold text-gray-900">{userProfile?.fullname}</p>
+                <p className="text-xs text-gray-500">{userProfile?.email}</p>
+              </div>
+              <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-full flex items-center justify-center">
+                <span className="text-white font-bold">{userProfile?.fullname?.charAt(0) || 'U'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sidebar */}
+      <div className={`fixed left-0 top-0 h-full bg-white border-r border-gray-200 z-30 transition-all duration-300 flex flex-col ${sidebarCollapsed ? 'w-20' : 'w-72'}`}>
+        {/* Logo */}
+        <div className={`p-5 border-b border-gray-200 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
               <Leaf className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-gray-900">GreenLoop</span>
+            {!sidebarCollapsed && <span className="font-bold text-lg text-gray-900">GreenLoop</span>}
           </div>
-          
-          <div className="w-10"></div> {/* Spacer for alignment */}
         </div>
-      </div>
 
-      {/* Mobile Header Shadow */}
-      <div className="md:hidden h-14"></div>
-
-      {/* Sidebar - Desktop always visible, Mobile slides in */}
-      <aside className={`
-        fixed top-0 left-0 h-full w-72 bg-white shadow-2xl z-50
-        transition-transform duration-300 ease-in-out
-        ${isMobile ? (sidebarOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}
-      `}>
-        <div className="flex flex-col h-full">
-          {/* Sidebar Header */}
-          <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-            <Link to="/dashboard" className="flex items-center gap-2" onClick={() => isMobile && setSidebarOpen(false)}>
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center">
-                <Leaf className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <span className="font-bold text-lg text-gray-900">GreenLoop</span>
-                <p className="text-xs text-gray-500 capitalize">{userProfile?.role || 'Student'}</p>
-              </div>
-            </Link>
-            
-            {/* Close button - only visible on mobile */}
-            {isMobile && (
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors tap-target"
-                aria-label="Close menu"
-              >
-                <X size={20} className="text-gray-600" />
-              </button>
-            )}
+        {/* User Profile (Collapsed) */}
+        {sidebarCollapsed && (
+          <div className="p-3 border-b border-gray-200 flex justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-full flex items-center justify-center">
+              <span className="text-white font-bold text-sm">{userProfile?.fullname?.charAt(0) || 'U'}</span>
+            </div>
           </div>
-          
-          {/* User Info */}
-          <div className="p-4 border-b border-gray-100">
+        )}
+
+        {/* User Info (Expanded) */}
+        {!sidebarCollapsed && (
+          <div className="p-4 border-b border-gray-200">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center">
-                <span className="text-primary-700 font-semibold text-lg">
-                  {userProfile?.fullname?.charAt(0) || 'U'}
-                </span>
+              <div className="w-10 h-10 bg-gradient-to-br from-primary-100 to-primary-200 rounded-full flex items-center justify-center">
+                <span className="text-primary-700 font-semibold">{userProfile?.fullname?.charAt(0) || 'U'}</span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 truncate">
-                  {userProfile?.fullname || 'User'}
-                </p>
+              <div className="flex-1">
+                <p className="font-semibold text-gray-900 text-sm truncate">{userProfile?.fullname}</p>
                 <p className="text-xs text-gray-500 truncate">{userProfile?.email}</p>
-                <div className="flex items-center gap-1 mt-1">
+                <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs font-semibold text-green-600">{userProfile?.ecoPoints || 0} pts</span>
                   <span className="text-xs text-gray-400">•</span>
-                  <span className="text-xs text-gray-500 truncate">{userProfile?.badge || 'Eco Rookie'}</span>
+                  <span className="text-xs text-gray-500">{userProfile?.badge || 'Eco Rookie'}</span>
                 </div>
               </div>
             </div>
           </div>
-          
-          {/* Navigation */}
-          <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => isMobile && setSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-                    isActive 
-                      ? 'bg-primary-50 text-primary-700' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  <item.icon size={20} />
-                  <span className="font-medium">{item.label}</span>
-                  {isActive && (
-                    <div className="ml-auto w-1.5 h-8 bg-primary-500 rounded-full"></div>
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
-          
-          {/* Logout Button */}
-          <div className="p-4 border-t border-gray-100">
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 px-4 py-3 w-full text-red-600 rounded-xl hover:bg-red-50 transition-all duration-200"
-            >
-              <LogOut size={20} />
-              <span className="font-medium">Logout</span>
-            </button>
-          </div>
+        )}
+
+        {/* Navigation */}
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+          {navItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <Link 
+                key={item.path} 
+                to={item.path} 
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
+                  isActive ? 'bg-primary-50 text-primary-700' : 'text-gray-700 hover:bg-gray-100'
+                } ${sidebarCollapsed ? 'justify-center' : ''}`}
+              >
+                <item.icon size={20} />
+                {!sidebarCollapsed && <span className="font-medium">{item.label}</span>}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Logout */}
+        <div className="p-3 border-t border-gray-200">
+          <button 
+            onClick={handleLogout} 
+            className={`flex items-center gap-3 px-3 py-2.5 w-full text-red-600 rounded-lg hover:bg-red-50 transition-all ${sidebarCollapsed ? 'justify-center' : ''}`}
+          >
+            <LogOut size={20} />
+            {!sidebarCollapsed && <span className="font-medium">Logout</span>}
+          </button>
         </div>
-      </aside>
+      </div>
 
-      {/* Overlay for mobile */}
-      <Overlay />
-
-      {/* Main Content - Adjusts for sidebar */}
-      <main className={`
-        transition-all duration-300
-        ${!isMobile ? 'md:ml-72' : 'ml-0'}
-      `}>
-        <div className="p-4 md:p-6">
+      {/* Main Content */}
+      <main className={`transition-all duration-300 pt-16 ${sidebarCollapsed ? 'pl-20' : 'pl-72'}`}>
+        <div className="p-6">
           <Outlet />
         </div>
       </main>

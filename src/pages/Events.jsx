@@ -1,4 +1,4 @@
-// src/pages/Events.jsx
+// src/pages/Events.jsx - Complete Working Version
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { firebaseService } from '../services/firebaseService';
@@ -9,15 +9,11 @@ import {
   Users, 
   Plus, 
   Search, 
-  Filter,
   X,
-  ChevronLeft,
-  ChevronRight,
   CheckCircle,
   CalendarDays,
   Loader2
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 const Events = () => {
@@ -26,7 +22,7 @@ const Events = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all'); // all, upcoming, past, joined
+  const [filterType, setFilterType] = useState('all');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
@@ -59,6 +55,7 @@ const Events = () => {
     } catch (error) {
       console.error('Error fetching events:', error);
       toast.error('Failed to load events');
+      setEvents([]);
     } finally {
       setLoading(false);
     }
@@ -81,7 +78,6 @@ const Events = () => {
         maxParticipants: parseInt(formData.maxParticipants) || 0,
         category: formData.category,
         createdBy: currentUser.uid,
-        createdAt: new Date().toISOString(),
       };
       
       await firebaseService.createEvent(eventData);
@@ -96,6 +92,11 @@ const Events = () => {
   };
 
   const handleJoinEvent = async (eventId) => {
+    if (!currentUser) {
+      toast.error('Please login to join events');
+      return;
+    }
+    
     try {
       await firebaseService.joinEvent(eventId, currentUser.uid);
       toast.success('Successfully joined the event! +25 Eco Points');
@@ -125,16 +126,14 @@ const Events = () => {
   const filterEvents = () => {
     let filtered = [...events];
     
-    // Search filter
     if (searchTerm) {
       filtered = filtered.filter(event => 
-        event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        event.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        event.location.toLowerCase().includes(searchTerm.toLowerCase())
+        event.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        event.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        event.location?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
     
-    // Type filter
     const now = new Date();
     if (filterType === 'upcoming') {
       filtered = filtered.filter(event => new Date(event.date) >= now);
@@ -394,10 +393,10 @@ const Events = () => {
 
 // Event Card Component
 const EventCard = ({ event, currentUser, onJoin, onViewDetails, getCategoryStyle, isPast }) => {
-  const eventDate = new Date(event.date);
-  const isJoined = event.participants?.includes(currentUser?.uid);
-  const isFull = event.maxParticipants > 0 && event.participants?.length >= event.maxParticipants;
-  const categoryStyle = getCategoryStyle(event.category);
+  const eventDate = event?.date ? new Date(event.date) : new Date();
+  const isJoined = event?.participants?.includes(currentUser?.uid);
+  const isFull = event?.maxParticipants > 0 && event?.participants?.length >= event?.maxParticipants;
+  const categoryStyle = getCategoryStyle(event?.category);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all overflow-hidden">
@@ -415,13 +414,13 @@ const EventCard = ({ event, currentUser, onJoin, onViewDetails, getCategoryStyle
           )}
         </div>
         
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">{event.title}</h3>
-        <p className="text-gray-500 text-sm mb-3 line-clamp-2">{event.description}</p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">{event?.title}</h3>
+        <p className="text-gray-500 text-sm mb-3 line-clamp-2">{event?.description}</p>
         
         <div className="space-y-2 mb-4">
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Calendar size={14} />
-            <span>{eventDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+            <span>{eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Clock size={14} />
@@ -429,11 +428,11 @@ const EventCard = ({ event, currentUser, onJoin, onViewDetails, getCategoryStyle
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <MapPin size={14} />
-            <span>{event.location}</span>
+            <span>{event?.location}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Users size={14} />
-            <span>{event.participants?.length || 0} participants{event.maxParticipants ? ` / ${event.maxParticipants}` : ''}</span>
+            <span>{event?.participants?.length || 0} participants{event?.maxParticipants ? ` / ${event.maxParticipants}` : ''}</span>
           </div>
         </div>
         
@@ -470,11 +469,13 @@ const EventCard = ({ event, currentUser, onJoin, onViewDetails, getCategoryStyle
 
 // Event Details Modal Component
 const EventDetailsModal = ({ event, currentUser, onClose, onJoin, getCategoryStyle }) => {
-  const eventDate = new Date(event.date);
-  const isJoined = event.participants?.includes(currentUser?.uid);
-  const isFull = event.maxParticipants > 0 && event.participants?.length >= event.maxParticipants;
+  const eventDate = event?.date ? new Date(event.date) : new Date();
+  const isJoined = event?.participants?.includes(currentUser?.uid);
+  const isFull = event?.maxParticipants > 0 && event?.participants?.length >= event?.maxParticipants;
   const isPast = eventDate < new Date();
-  const categoryStyle = getCategoryStyle(event.category);
+  const categoryStyle = getCategoryStyle(event?.category);
+
+  if (!event) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>

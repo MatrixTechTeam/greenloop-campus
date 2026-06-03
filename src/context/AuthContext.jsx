@@ -1,3 +1,4 @@
+// src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
   signInWithEmailAndPassword, 
@@ -61,20 +62,10 @@ export const AuthProvider = ({ children }) => {
       await firebaseService.createUserProfile(userCredential.user.uid, {
         fullname, email, department, faculty, role: 'student', ecoPoints: 0, badge: 'Eco Rookie',
       });
-      toast.success('Account created successfully! You can now login.');
+      toast.success('Account created successfully!');
       return userCredential.user;
     } catch (error) {
-      let errorMessage = 'Failed to create account. ';
-      switch (error.code) {
-        case 'auth/email-already-in-use': errorMessage = 'Email already registered. Please login.';
-          break;
-        case 'auth/invalid-email': errorMessage = 'Invalid email address.';
-          break;
-        case 'auth/weak-password': errorMessage = 'Password too weak. Use at least 6 characters.';
-          break;
-        default: errorMessage += error.message;
-      }
-      toast.error(errorMessage);
+      toast.error('Failed to create account');
       throw error;
     }
   };
@@ -82,20 +73,10 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      toast.success(`Welcome back, ${userCredential.user.displayName || 'Eco Warrior'}!`);
+      toast.success(`Welcome back!`);
       return userCredential.user;
     } catch (error) {
-      let errorMessage = 'Login failed. ';
-      switch (error.code) {
-        case 'auth/user-not-found': errorMessage = 'No account found. Please sign up.';
-          break;
-        case 'auth/wrong-password': errorMessage = 'Incorrect password.';
-          break;
-        case 'auth/invalid-credential': errorMessage = 'Invalid email or password.';
-          break;
-        default: errorMessage += error.message;
-      }
-      toast.error(errorMessage);
+      toast.error('Login failed');
       throw error;
     }
   };
@@ -103,22 +84,10 @@ export const AuthProvider = ({ children }) => {
   const loginWithGoogle = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      let profile = await firebaseService.getUserProfile(result.user.uid);
-      if (!profile) {
-        profile = {
-          fullname: result.user.displayName,
-          email: result.user.email,
-          role: 'student',
-          ecoPoints: 0,
-          badge: 'Eco Rookie',
-          profilePicture: result.user.photoURL,
-        };
-        await firebaseService.createUserProfile(result.user.uid, profile);
-      }
-      toast.success(`Welcome, ${result.user.displayName}!`);
+      toast.success(`Welcome!`);
       return result.user;
     } catch (error) {
-      toast.error('Google login failed.');
+      toast.error('Google login failed');
       throw error;
     }
   };
@@ -126,7 +95,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       await signOut(auth);
-      toast.success('Logged out successfully');
+      toast.success('Logged out');
     } catch (error) {
       toast.error('Logout failed');
     }

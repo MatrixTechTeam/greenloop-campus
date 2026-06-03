@@ -1,21 +1,26 @@
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
-import 'leaflet/dist/leaflet.css'
+// In your Dashboard or WasteReport page
+import WasteMap from '../components/WasteMap';
 
-export default function WasteMap({ reports = [], center = [5.05, 7.91] }) {
-  return (
-    <MapContainer center={center} zoom={15} className="w-full h-64 rounded-xl z-0">
-      <TileLayer
-        attribution='&copy; OpenStreetMap contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      {reports.map((report) => (
-        <Marker key={report.id} position={[report.lat, report.lng]}>
-          <Popup>
-            <p className="font-semibold">{report.wasteType}</p>
-            <p className="text-xs text-gray-500">{report.status}</p>
-          </Popup>
-        </Marker>
-      ))}
-    </MapContainer>
-  )
-}
+// Example usage
+const [reports, setReports] = useState([]);
+
+// Fetch reports from Firebase
+useEffect(() => {
+  const fetchReports = async () => {
+    const allReports = await firebaseService.getReports();
+    setReports(allReports);
+  };
+  fetchReports();
+}, []);
+
+// In your JSX
+<WasteMap 
+  reports={reports}
+  center={[6.5244, 3.3792]} // Lagos coordinates
+  height="450px"
+  showUserLocation={true}
+  onMarkerClick={(report) => {
+    console.log('Clicked report:', report);
+    // Navigate to report details or show modal
+  }}
+/>

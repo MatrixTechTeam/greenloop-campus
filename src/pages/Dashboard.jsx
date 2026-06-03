@@ -1,23 +1,11 @@
-// src/pages/Dashboard.jsx - Fixed with all imports
+// src/pages/Dashboard.jsx - Fixed with Trophy import
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { firebaseService } from '../services/firebaseService';
 import { 
-  Leaf, 
-  TrendingUp, 
-  Users, 
-  Recycle, 
-  Award, 
-  Calendar, 
-  ShoppingBag, 
-  Bell, 
-  ArrowRight, 
-  CheckCircle, 
-  Clock,
-  Trophy,
-  FileText,
-  Camera,
-  Star
+  Leaf, TrendingUp, Users, Recycle, Award, Calendar, 
+  ShoppingBag, Bell, ArrowRight, CheckCircle, Clock, 
+  Trophy, FileText, Camera  // Added Trophy, FileText, Camera
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
