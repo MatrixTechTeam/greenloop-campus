@@ -1,3 +1,4 @@
+// src/components/MobileLayout.jsx - Complete with all render functions
 import React, {
   useState,
   useEffect,
@@ -12,6 +13,8 @@ import { firebaseService } from "../services/firebaseService";
 import AIWasteScanner from "./AIWasteScanner";
 import MobileProfile from "../pages/MobileProfile";
 import AdminPanel from "../pages/AdminPanel";
+import WasteReport from "../pages/WasteReport";
+import VerifyRecycling from "../pages/VerifyRecycling";
 import {
   Menu,
   X,
@@ -52,11 +55,61 @@ import {
   Globe,
   BookOpen,
   Flag,
+  Wind,
+  Camera,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 
-// ── Sidebar animation config — fast, snappy ──────────────────────────────
+// ── Splash Screen Component ──
+const SplashScreen = ({ message, onComplete }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (onComplete && typeof onComplete === "function") {
+        onComplete();
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [onComplete]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-white"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="text-center">
+        <div className="relative mb-6">
+          <div className="w-24 h-24 bg-green-50 rounded-3xl flex items-center justify-center mx-auto shadow-lg">
+            <Leaf className="w-12 h-12 text-green-600" />
+          </div>
+          <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-16 h-1 bg-green-200 rounded-full animate-pulse" />
+        </div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">GreenLoop</h1>
+        <p className="text-green-600 text-sm">{message}</p>
+        <div className="flex justify-center gap-2 mt-6">
+          <div
+            className="w-2 h-2 bg-green-400 rounded-full animate-bounce"
+            style={{ animationDelay: "0ms" }}
+          />
+          <div
+            className="w-2 h-2 bg-green-500 rounded-full animate-bounce"
+            style={{ animationDelay: "150ms" }}
+          />
+          <div
+            className="w-2 h-2 bg-green-600 rounded-full animate-bounce"
+            style={{ animationDelay: "300ms" }}
+          />
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+// ── Sidebar animation config ──────────────────────────────────────────────
 const SIDEBAR_VARIANTS = {
   open: {
     x: 0,
@@ -72,9 +125,17 @@ const OVERLAY_VARIANTS = {
   closed: { opacity: 0, transition: { duration: 0.12 } },
 };
 
-// ── Memoized Sidebar ────────────────────────────────────────────────────
+// ── Memoized Sidebar ──
 const Sidebar = memo(
-  ({ isOpen, onClose, navItems, userProfile, location, onLogout }) => (
+  ({
+    isOpen,
+    onClose,
+    navItems,
+    userProfile,
+    location,
+    onLogout,
+    onGoHome,
+  }) => (
     <AnimatePresence>
       {isOpen && (
         <>
@@ -98,14 +159,17 @@ const Sidebar = memo(
             <div className="h-full flex flex-col">
               <div className="p-5 border-b border-green-100">
                 <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-2">
+                  <button
+                    onClick={onGoHome}
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  >
                     <div className="w-9 h-9 bg-green-600 rounded-xl flex items-center justify-center">
                       <Leaf className="w-4 h-4 text-white" />
                     </div>
                     <span className="font-bold text-green-800 text-base">
                       GreenLoop
                     </span>
-                  </div>
+                  </button>
                   <button
                     onClick={onClose}
                     className="p-1.5 hover:bg-green-50 rounded-full transition-colors"
@@ -179,7 +243,7 @@ const Sidebar = memo(
   ),
 );
 
-// ── Memoized UserDetailsModal ───────────────────────────────────────────
+// ── Memoized UserDetailsModal ──
 const UserDetailsModal = memo(({ user, rank, onClose }) => {
   if (!user) return null;
   return (
@@ -310,8 +374,7 @@ const UserDetailsModal = memo(({ user, rank, onClose }) => {
           {user.bio && (
             <div>
               <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-2">
-                <Globe size={14} className="text-green-600" />
-                About
+                <Globe size={14} className="text-green-600" /> About
               </h4>
               <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
                 {user.bio}
@@ -356,7 +419,7 @@ const UserDetailsModal = memo(({ user, rank, onClose }) => {
   );
 });
 
-// ── Main MobileLayout ───────────────────────────────────────────────────
+// ── Main MobileLayout ──
 const MobileLayout = () => {
   const { currentUser, userProfile, logout } = useAuth();
   const navigate = useNavigate();
@@ -401,6 +464,46 @@ const MobileLayout = () => {
   const [marketplaceSearch, setMarketplaceSearch] = useState("");
   const [leaderboardSearch, setLeaderboardSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [leaderboardTab, setLeaderboardTab] = useState("individual");
+  const [openGroups, setOpenGroups] = useState({});
+
+  // Splash screen states
+  const [showSplash, setShowSplash] = useState(false);
+  const [splashMessage, setSplashMessage] = useState("");
+  const [isFirstTime, setIsFirstTime] = useState(false);
+
+  // Check if first time user
+  useEffect(() => {
+    const hasVisited = localStorage.getItem("hasVisited");
+    if (!hasVisited && currentUser) {
+      setIsFirstTime(true);
+      setSplashMessage("Welcome to GreenLoop! 🌿");
+      setShowSplash(true);
+      localStorage.setItem("hasVisited", "true");
+    }
+  }, [currentUser]);
+
+  // FIXED: Handle go back home with splash screen
+  const handleGoHome = useCallback(() => {
+    if (sidebarOpen) setSidebarOpen(false);
+
+    if (location.pathname === "/dashboard") {
+      setSplashMessage("GreenLoop");
+      setShowSplash(true);
+      setTimeout(() => {
+        setShowSplash(false);
+      }, 1500);
+      return;
+    }
+
+    setSplashMessage("Loading Dashboard...");
+    setShowSplash(true);
+    navigate("/dashboard");
+
+    setTimeout(() => {
+      setShowSplash(false);
+    }, 1500);
+  }, [navigate, location.pathname, sidebarOpen]);
 
   const categories = useMemo(
     () => [
@@ -443,6 +546,8 @@ const MobileLayout = () => {
       { path: "/dashboard/leaderboard", icon: Trophy, label: "Leaderboard" },
       { path: "/dashboard/events", icon: Calendar, label: "Events" },
       { path: "/dashboard/profile", icon: User, label: "Profile" },
+      { path: "/dashboard/verify", icon: Camera, label: "Verify" },
+      { path: "/dashboard/waste-report", icon: Flag, label: "Report Waste" },
     ];
     if (userProfile?.role === "admin")
       items.push({ path: "/dashboard/admin", icon: Shield, label: "Admin" });
@@ -594,6 +699,53 @@ const MobileLayout = () => {
     );
   }, [listings, marketplaceSearch, selectedCategory]);
 
+  // ── Leaderboard group aggregations ──
+  const groupedByDepartment = useMemo(() => {
+    const map = {};
+    leaderboard.forEach((u) => {
+      const key = u.department || "Unknown";
+      if (!map[key]) map[key] = [];
+      map[key].push(u);
+    });
+    return Object.entries(map)
+      .map(([name, members]) => ({
+        name,
+        members: members.sort(
+          (a, b) => (b.ecoPoints || 0) - (a.ecoPoints || 0),
+        ),
+        total: members.reduce((s, m) => s + (m.ecoPoints || 0), 0),
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [leaderboard]);
+
+  const groupedByFaculty = useMemo(() => {
+    const map = {};
+    leaderboard.forEach((u) => {
+      const key = u.faculty || "Unknown";
+      if (!map[key]) map[key] = [];
+      map[key].push(u);
+    });
+    return Object.entries(map)
+      .map(([name, members]) => ({
+        name,
+        members: members.sort(
+          (a, b) => (b.ecoPoints || 0) - (a.ecoPoints || 0),
+        ),
+        total: members.reduce((s, m) => s + (m.ecoPoints || 0), 0),
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [leaderboard]);
+
+  const CO2_SAVINGS = {
+    plastic: 0.12,
+    paper: 0.09,
+    glass: 0.31,
+    metal: 0.42,
+    organic: 0.05,
+    electronic: 1.2,
+    hazardous: 0.8,
+  };
+
   const stats = useMemo(() => {
     const dates = recentActivity
       .map((a) => (a.timestamp ? new Date(a.timestamp).toDateString() : ""))
@@ -607,6 +759,10 @@ const MobileLayout = () => {
       if (unique.includes(check.toDateString())) streak++;
       else break;
     }
+    const co2 = recentActivity.reduce(
+      (sum, r) => sum + (CO2_SAVINGS[r.wasteType?.toLowerCase()] || 0),
+      0,
+    );
     return [
       { icon: Star, label: "Points", value: userProfile?.ecoPoints || 0 },
       {
@@ -617,19 +773,25 @@ const MobileLayout = () => {
       },
       { icon: Flame, label: "Streak", value: streak },
       {
-        icon: Award,
+        icon: Trophy,
         label: "Rank",
         value:
           leaderboard.findIndex((u) => u.uid === currentUser?.uid) + 1 || "--",
       },
+      { icon: Wind, label: "CO₂ Saved", value: `${co2.toFixed(1)}kg` },
     ];
   }, [userProfile?.ecoPoints, recentActivity, leaderboard, currentUser?.uid]);
 
-  const handleLogout = useCallback(async () => {
-    await logout();
-    toast.success("Logged out successfully");
-    navigate("/");
-  }, [logout, navigate]);
+  const handleLogout = async () => {
+    setSplashMessage("See you soon! 👋");
+    setShowSplash(true);
+    setTimeout(async () => {
+      await logout();
+      toast.success("Logged out successfully");
+      navigate("/");
+      setShowSplash(false);
+    }, 1500);
+  };
 
   const handleJoinEvent = useCallback(
     async (eventId) => {
@@ -773,7 +935,11 @@ const MobileLayout = () => {
     return null;
   };
 
-  // ── Render sections ─────────────────────────────────────────────────
+  const toggleGroup = useCallback((name) => {
+    setOpenGroups((prev) => ({ ...prev, [name]: !prev[name] }));
+  }, []);
+
+  // ── Render Dashboard ──
   const renderDashboard = () => (
     <div className="space-y-5 pb-20">
       <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white shadow-lg">
@@ -793,16 +959,10 @@ const MobileLayout = () => {
               </span>
             </div>
           </div>
-          <button
-            onClick={() => setShowScanner(true)}
-            className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-          >
-            <Sparkles size={22} className="text-green-600" />
-          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-5 gap-2">
         {stats.map((stat, i) => (
           <div
             key={i}
@@ -819,29 +979,26 @@ const MobileLayout = () => {
 
       <div className="overflow-x-auto pb-2 -mx-1 px-1">
         <div className="flex gap-3 min-w-max">
-          {[
-            {
-              label: "AI Scan",
-              icon: Sparkles,
-              onClick: () => setShowScanner(true),
-              style: "bg-green-600",
-            },
-          ].map(({ label, icon: Icon, onClick, style }) => (
-            <button
-              key={label}
-              onClick={onClick}
-              className={`flex flex-col items-center gap-2 p-3 min-w-[72px] ${style} rounded-xl active:scale-95 shadow-sm transition-transform`}
-            >
-              <Icon size={20} className="text-white" />
-              <span className="text-xs font-medium text-white">{label}</span>
-            </button>
-          ))}
+          <button
+            onClick={() => setShowScanner(true)}
+            className="flex flex-col items-center gap-2 p-3 min-w-[72px] bg-green-600 rounded-xl active:scale-95 shadow-sm transition-transform"
+          >
+            <Sparkles size={20} className="text-white" />
+            <span className="text-xs font-medium text-white">AI Scan</span>
+          </button>
           <Link
-            to="/dashboard/marketplace"
+            to="/dashboard/waste-report"
+            className="flex flex-col items-center gap-2 p-3 min-w-[72px] bg-gradient-to-r from-red-600 to-red-500 rounded-xl active:scale-95 shadow-sm transition-transform"
+          >
+            <Flag size={20} className="text-white" />
+            <span className="text-xs font-medium text-white">Report Waste</span>
+          </Link>
+          <Link
+            to="/dashboard/verify"
             className="flex flex-col items-center gap-2 p-3 min-w-[72px] bg-white rounded-xl shadow-sm border border-green-200 active:scale-95 transition-transform"
           >
-            <Store size={20} className="text-green-600" />
-            <span className="text-xs font-medium text-gray-700">Exchange</span>
+            <Camera size={20} className="text-green-600" />
+            <span className="text-xs font-medium text-gray-700">Verify</span>
           </Link>
           <Link
             to="/dashboard/events"
@@ -999,6 +1156,7 @@ const MobileLayout = () => {
     </div>
   );
 
+  // ── Render Marketplace ──
   const renderMarketplace = () => (
     <div className="space-y-4 pb-20">
       <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white shadow-lg">
@@ -1085,13 +1243,7 @@ const MobileLayout = () => {
               </p>
               <div className="flex items-center justify-between mt-2">
                 <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full capitalize ${
-                    item.condition === "excellent"
-                      ? "bg-green-100 text-green-700"
-                      : item.condition === "good"
-                        ? "bg-green-50 text-green-600"
-                        : "bg-gray-100 text-gray-600"
-                  }`}
+                  className={`text-[10px] px-2 py-0.5 rounded-full capitalize ${item.condition === "excellent" ? "bg-green-100 text-green-700" : item.condition === "good" ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-600"}`}
                 >
                   {item.condition}
                 </span>
@@ -1118,160 +1270,340 @@ const MobileLayout = () => {
     </div>
   );
 
-  const renderLeaderboard = () => (
-    <div className="space-y-4 pb-20">
-      <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white shadow-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">Leaderboard</h1>
-            <p className="text-sm text-green-100 mt-1">Top Eco Warriors</p>
-          </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="px-3 py-2 bg-white/20 rounded-xl text-sm font-medium flex items-center gap-2"
-          >
-            <Filter size={14} /> Filters
-          </button>
+  // ── Group list renderer (department / faculty tabs) ──
+  const renderGroupList = (groups) => {
+    if (groups.length === 0) {
+      return (
+        <div className="bg-white rounded-xl p-12 text-center border border-green-100">
+          <Trophy size={48} className="mx-auto text-gray-300 mb-3" />
+          <p className="text-gray-500">No groups found</p>
         </div>
-      </div>
-      <AnimatePresence>
-        {showFilters && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="overflow-hidden bg-white rounded-xl border border-green-100"
-          >
-            <div className="p-4 space-y-3">
-              <div>
-                <label className="text-xs font-medium text-gray-700 mb-1 block">
-                  Department
-                </label>
-                <select
-                  value={selectedDepartment}
-                  onChange={(e) => setSelectedDepartment(e.target.value)}
-                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm"
-                >
-                  {departmentsList.map((d) => (
-                    <option key={d} value={d}>
-                      {d === "all" ? "All Departments" : d}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700 mb-1 block">
-                  Faculty
-                </label>
-                <select
-                  value={selectedFaculty}
-                  onChange={(e) => setSelectedFaculty(e.target.value)}
-                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm"
-                >
-                  {facultiesList.map((f) => (
-                    <option key={f} value={f}>
-                      {f === "all" ? "All Faculties" : f}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSortBy("points")}
-                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium ${sortBy === "points" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"}`}
-                >
-                  Points
-                </button>
-                <button
-                  onClick={() => setSortBy("name")}
-                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium ${sortBy === "name" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"}`}
-                >
-                  Name
-                </button>
-              </div>
+      );
+    }
+    return (
+      <div className="space-y-3">
+        {groups.map((group, gi) => {
+          const rank = gi + 1;
+          const isOpen = !!openGroups[group.name];
+          return (
+            <div
+              key={group.name}
+              className="bg-white rounded-xl shadow-sm border border-green-100 overflow-hidden"
+            >
               <button
-                onClick={() => {
-                  setSelectedDepartment("all");
-                  setSelectedFaculty("all");
-                  setLeaderboardSearch("");
-                  setSortBy("points");
-                }}
-                className="w-full py-2 text-xs text-green-600 font-medium border-t border-green-100 pt-2"
+                onClick={() => toggleGroup(group.name)}
+                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-green-50/50 transition-colors"
               >
-                Reset Filters
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <div className="relative">
-        <Search
-          size={16}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-green-400"
-        />
-        <input
-          type="text"
-          placeholder="Search users..."
-          value={leaderboardSearch}
-          onChange={(e) => setLeaderboardSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-3 bg-white rounded-xl border border-green-200 text-sm focus:outline-none focus:border-green-400"
-        />
-      </div>
-      <p className="text-xs text-gray-500 px-1">
-        Showing {filteredLeaderboard.length} of {leaderboard.length} users
-      </p>
-      <div className="bg-white rounded-xl shadow-sm border border-green-100 overflow-hidden">
-        <div className="divide-y divide-green-50">
-          {filteredLeaderboard.length === 0 ? (
-            <div className="p-12 text-center">
-              <Trophy size={48} className="mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500">No users found</p>
-            </div>
-          ) : (
-            filteredLeaderboard.map((user, idx) => {
-              const rank = idx + 1;
-              const isCurrentUser = user.uid === currentUser?.uid;
-              return (
-                <div
-                  key={user.uid}
-                  onClick={() => {
-                    setSelectedUser(user);
-                    setShowUserModal(true);
-                  }}
-                  className={`px-4 py-3 flex items-center gap-3 cursor-pointer transition-colors ${isCurrentUser ? "bg-green-50" : "hover:bg-green-50/30"}`}
-                >
-                  <div className="flex items-center gap-1 w-10 shrink-0">
-                    {getRankIcon(rank)}
+                <div className="flex items-center gap-1 w-10 shrink-0">
+                  {getRankIcon(rank)}
+                  {rank > 3 && (
                     <div
                       className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${getRankBadge(rank)}`}
                     >
-                      {rank > 3 ? rank : null}
+                      {rank}
                     </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 text-sm truncate">
-                      {user.fullname || "Anonymous"}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {user.department || user.faculty || "Student"}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-green-600 text-sm">
-                      {user.ecoPoints || 0}
-                    </p>
-                    <p className="text-[10px] text-gray-400">pts</p>
-                  </div>
+                  )}
                 </div>
-              );
-            })
-          )}
-        </div>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="font-semibold text-gray-900 text-sm truncate">
+                    {group.name}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {group.members.length} member
+                    {group.members.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="text-right">
+                    <p className="font-bold text-green-600 text-sm">
+                      {group.total.toLocaleString()}
+                    </p>
+                    <p className="text-[10px] text-gray-400">total pts</p>
+                  </div>
+                  <ChevronDown
+                    size={16}
+                    className={`text-gray-400 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`}
+                  />
+                </div>
+              </button>
+              <AnimatePresence>
+                {isOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden border-t border-green-50"
+                  >
+                    <div className="divide-y divide-green-50">
+                      {group.members.map((user, idx) => {
+                        const memberRank = idx + 1;
+                        const isCurrentUser = user.uid === currentUser?.uid;
+                        return (
+                          <div
+                            key={user.uid}
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setShowUserModal(true);
+                            }}
+                            className={`px-4 py-2.5 flex items-center gap-3 cursor-pointer transition-colors ${isCurrentUser ? "bg-green-50" : "hover:bg-green-50/30"}`}
+                          >
+                            <div className="flex items-center gap-1 w-10 shrink-0">
+                              {getRankIcon(memberRank)}
+                              <div
+                                className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] ${getRankBadge(memberRank)}`}
+                              >
+                                {memberRank > 3 ? memberRank : null}
+                              </div>
+                            </div>
+                            <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                              <span className="text-green-700 font-semibold text-xs">
+                                {user.fullname?.charAt(0) || "U"}
+                              </span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-gray-900 text-sm truncate">
+                                {user.fullname || "Anonymous"}
+                                {isCurrentUser && (
+                                  <span className="ml-1.5 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                                    You
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-gray-400 truncate">
+                                {user.badge || "Eco Rookie"}
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-bold text-green-600 text-sm">
+                                {user.ecoPoints || 0}
+                              </p>
+                              <p className="text-[10px] text-gray-400">pts</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
       </div>
-    </div>
-  );
+    );
+  };
 
+  // ── Render Leaderboard ──
+  const renderLeaderboard = () => {
+    const searchTerm = leaderboardSearch.toLowerCase();
+    const filteredDeptGroups = groupedByDepartment.filter(
+      (g) => !searchTerm || g.name.toLowerCase().includes(searchTerm),
+    );
+    const filteredFacGroups = groupedByFaculty.filter(
+      (g) => !searchTerm || g.name.toLowerCase().includes(searchTerm),
+    );
+    const countLabel =
+      leaderboardTab === "individual"
+        ? `Showing ${filteredLeaderboard.length} of ${leaderboard.length} users`
+        : leaderboardTab === "department"
+          ? `${filteredDeptGroups.length} department${filteredDeptGroups.length !== 1 ? "s" : ""}`
+          : `${filteredFacGroups.length} facult${filteredFacGroups.length !== 1 ? "ies" : "y"}`;
+
+    return (
+      <div className="space-y-4 pb-20">
+        <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold">Leaderboard</h1>
+              <p className="text-sm text-green-100 mt-1">Top Eco Warriors</p>
+            </div>
+            {leaderboardTab === "individual" && (
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="px-3 py-2 bg-white/20 rounded-xl text-sm font-medium flex items-center gap-2"
+              >
+                <Filter size={14} /> Filters
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex bg-white rounded-xl p-1 border border-green-100 gap-1 shadow-sm">
+          {[
+            { key: "individual", label: "Individual" },
+            { key: "department", label: "Department" },
+            { key: "faculty", label: "Faculty" },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setLeaderboardTab(tab.key);
+                setLeaderboardSearch("");
+                setOpenGroups({});
+                setShowFilters(false);
+              }}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${leaderboardTab === tab.key ? "bg-green-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {leaderboardTab === "individual" && (
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="overflow-hidden bg-white rounded-xl border border-green-100"
+              >
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">
+                      Department
+                    </label>
+                    <select
+                      value={selectedDepartment}
+                      onChange={(e) => setSelectedDepartment(e.target.value)}
+                      className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm"
+                    >
+                      {departmentsList.map((d) => (
+                        <option key={d} value={d}>
+                          {d === "all" ? "All Departments" : d}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">
+                      Faculty
+                    </label>
+                    <select
+                      value={selectedFaculty}
+                      onChange={(e) => setSelectedFaculty(e.target.value)}
+                      className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm"
+                    >
+                      {facultiesList.map((f) => (
+                        <option key={f} value={f}>
+                          {f === "all" ? "All Faculties" : f}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSortBy("points")}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium ${sortBy === "points" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"}`}
+                    >
+                      Points
+                    </button>
+                    <button
+                      onClick={() => setSortBy("name")}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium ${sortBy === "name" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"}`}
+                    >
+                      Name
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedDepartment("all");
+                      setSelectedFaculty("all");
+                      setLeaderboardSearch("");
+                      setSortBy("points");
+                    }}
+                    className="w-full py-2 text-xs text-green-600 font-medium border-t border-green-100 pt-2"
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
+
+        <div className="relative">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-green-400"
+          />
+          <input
+            type="text"
+            placeholder={
+              leaderboardTab === "individual"
+                ? "Search users..."
+                : leaderboardTab === "department"
+                  ? "Search departments..."
+                  : "Search faculties..."
+            }
+            value={leaderboardSearch}
+            onChange={(e) => setLeaderboardSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-3 bg-white rounded-xl border border-green-200 text-sm focus:outline-none focus:border-green-400"
+          />
+        </div>
+
+        <p className="text-xs text-gray-500 px-1">{countLabel}</p>
+
+        {leaderboardTab === "individual" && (
+          <div className="bg-white rounded-xl shadow-sm border border-green-100 overflow-hidden">
+            <div className="divide-y divide-green-50">
+              {filteredLeaderboard.length === 0 ? (
+                <div className="p-12 text-center">
+                  <Trophy size={48} className="mx-auto text-gray-300 mb-3" />
+                  <p className="text-gray-500">No users found</p>
+                </div>
+              ) : (
+                filteredLeaderboard.map((user, idx) => {
+                  const rank = idx + 1;
+                  const isCurrentUser = user.uid === currentUser?.uid;
+                  return (
+                    <div
+                      key={user.uid}
+                      onClick={() => {
+                        setSelectedUser(user);
+                        setShowUserModal(true);
+                      }}
+                      className={`px-4 py-3 flex items-center gap-3 cursor-pointer transition-colors ${isCurrentUser ? "bg-green-50" : "hover:bg-green-50/30"}`}
+                    >
+                      <div className="flex items-center gap-1 w-10 shrink-0">
+                        {getRankIcon(rank)}
+                        <div
+                          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${getRankBadge(rank)}`}
+                        >
+                          {rank > 3 ? rank : null}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 text-sm truncate">
+                          {user.fullname || "Anonymous"}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {user.department || user.faculty || "Student"}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-bold text-green-600 text-sm">
+                          {user.ecoPoints || 0}
+                        </p>
+                        <p className="text-[10px] text-gray-400">pts</p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {leaderboardTab === "department" && renderGroupList(filteredDeptGroups)}
+        {leaderboardTab === "faculty" && renderGroupList(filteredFacGroups)}
+      </div>
+    );
+  };
+
+  // ── Render Events ──
   const renderEvents = () => (
     <div className="space-y-4 pb-20">
       <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white shadow-lg">
@@ -1357,18 +1689,41 @@ const MobileLayout = () => {
     </div>
   );
 
+  // ── Render Content - FIXED with all routes ──
   const renderContent = () => {
-    const p = location.pathname;
-    if (p === "/dashboard" || p === "/") return renderDashboard();
-    if (p === "/dashboard/marketplace") return renderMarketplace();
-    if (p === "/dashboard/leaderboard") return renderLeaderboard();
-    if (p === "/dashboard/events") return renderEvents();
-    if (p === "/dashboard/profile") return <MobileProfile />;
-    if (p === "/dashboard/admin") return <AdminPanel />;
+    const path = location.pathname;
+
+    // Dashboard routes
+    if (path === "/dashboard" || path === "/") {
+      return renderDashboard();
+    }
+    if (path === "/dashboard/marketplace") {
+      return renderMarketplace();
+    }
+    if (path === "/dashboard/leaderboard") {
+      return renderLeaderboard();
+    }
+    if (path === "/dashboard/events") {
+      return renderEvents();
+    }
+    if (path === "/dashboard/profile") {
+      return <MobileProfile />;
+    }
+    if (path === "/dashboard/admin") {
+      return <AdminPanel />;
+    }
+    if (path === "/dashboard/verify") {
+      return <VerifyRecycling />;
+    }
+    if (path === "/dashboard/waste-report") {
+      return <WasteReport />;
+    }
+
+    // Fallback to dashboard
     return renderDashboard();
   };
 
-  if (loading) {
+  if (loading && !showSplash) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-green-50">
         <div className="w-10 h-10 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
@@ -1378,6 +1733,32 @@ const MobileLayout = () => {
 
   return (
     <div className="min-h-screen bg-green-50">
+      {/* Splash Screen */}
+      <AnimatePresence>
+        {showSplash && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <SplashScreen
+              message={splashMessage}
+              onComplete={() => {
+                if (!isFirstTime) {
+                  setShowSplash(false);
+                } else {
+                  setTimeout(() => {
+                    setShowSplash(false);
+                    setIsFirstTime(false);
+                  }, 2000);
+                }
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <header
         className={`fixed top-0 left-0 right-0 z-40 transition-shadow duration-200 bg-white border-b border-green-100 ${scrolled ? "shadow-md" : ""}`}
@@ -1389,12 +1770,15 @@ const MobileLayout = () => {
           >
             <Menu size={22} className="text-green-700" />
           </button>
-          <div className="flex items-center gap-1">
+          <button
+            onClick={handleGoHome}
+            className="flex items-center gap-1 active:scale-95 transition-transform"
+          >
             <Leaf size={18} className="text-green-600" />
             <span className="font-semibold text-green-800 text-base">
               GreenLoop
             </span>
-          </div>
+          </button>
           <div className="flex items-center gap-2">
             <div className="relative" ref={notificationRef}>
               <button
@@ -1469,7 +1853,7 @@ const MobileLayout = () => {
         </div>
       </header>
 
-      {/* Sidebar — extracted memoized component */}
+      {/* Sidebar */}
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -1477,6 +1861,7 @@ const MobileLayout = () => {
         userProfile={userProfile}
         location={location}
         onLogout={handleLogout}
+        onGoHome={handleGoHome}
       />
 
       <main className="pt-16 pb-20">
@@ -1547,61 +1932,42 @@ const MobileLayout = () => {
                     onClick={() =>
                       setFormData((p) => ({ ...p, exchangeType: type }))
                     }
-                    className={`p-3 rounded-xl border-2 transition-all capitalize text-sm font-medium ${
-                      formData.exchangeType === type
-                        ? "border-green-600 bg-green-50 text-green-700"
-                        : "border-gray-200 text-gray-600"
-                    }`}
+                    className={`p-3 rounded-xl border-2 transition-all capitalize text-sm font-medium ${formData.exchangeType === type ? "border-green-600 bg-green-50 text-green-700" : "border-gray-200 text-gray-600"}`}
                   >
                     {type}
                   </button>
                 ))}
               </div>
-              {[
-                {
-                  key: "title",
-                  type: "text",
-                  placeholder: "e.g., Plastic Bottles Collection",
-                  label: "Title *",
-                  required: true,
-                },
-                {
-                  key: "description",
-                  type: "textarea",
-                  placeholder: "Describe the item...",
-                  label: "Description *",
-                  required: true,
-                },
-              ].map(({ key, type, placeholder, label, required }) => (
-                <div key={key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {label}
-                  </label>
-                  {type === "textarea" ? (
-                    <textarea
-                      value={formData[key]}
-                      onChange={(e) =>
-                        setFormData((p) => ({ ...p, [key]: e.target.value }))
-                      }
-                      className="w-full px-4 py-2 border border-gray-200 rounded-xl resize-none text-sm"
-                      rows="3"
-                      placeholder={placeholder}
-                      required={required}
-                    />
-                  ) : (
-                    <input
-                      type={type}
-                      value={formData[key]}
-                      onChange={(e) =>
-                        setFormData((p) => ({ ...p, [key]: e.target.value }))
-                      }
-                      className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm"
-                      placeholder={placeholder}
-                      required={required}
-                    />
-                  )}
-                </div>
-              ))}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Title *
+                </label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData((p) => ({ ...p, title: e.target.value }))
+                  }
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm"
+                  placeholder="e.g., Plastic Bottles Collection"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description *
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData((p) => ({ ...p, description: e.target.value }))
+                  }
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl resize-none text-sm"
+                  rows="3"
+                  placeholder="Describe the item..."
+                  required
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1821,7 +2187,7 @@ const MobileLayout = () => {
                     onClick={() => handleClaimItem(selectedItem)}
                     className="w-full py-3 mb-3 bg-green-600 text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-green-700 transition-colors"
                   >
-                    <Send size={16} />
+                    <Send size={16} />{" "}
                     {selectedItem.exchangeType === "sell"
                       ? "Purchase Item"
                       : "Claim Item"}

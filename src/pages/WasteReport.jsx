@@ -1,4 +1,3 @@
-// src/pages/WasteReport.jsx - Without react-hot-toast dependency
 import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { firebaseService } from "../services/firebaseService";
@@ -21,25 +20,7 @@ import {
   FileText,
 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
-
-// Simple notification function (replace toast)
-const showMessage = (message, type = "success") => {
-  // Create a temporary div for notification
-  const toastDiv = document.createElement("div");
-  toastDiv.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-white text-sm font-medium shadow-lg transition-all duration-300 ${
-    type === "success"
-      ? "bg-green-500"
-      : type === "error"
-        ? "bg-red-500"
-        : "bg-blue-500"
-  }`;
-  toastDiv.innerText = message;
-  document.body.appendChild(toastDiv);
-  setTimeout(() => {
-    toastDiv.style.opacity = "0";
-    setTimeout(() => toastDiv.remove(), 300);
-  }, 3000);
-};
+import toast from "react-hot-toast";
 
 const WasteReport = () => {
   const { currentUser, userProfile } = useAuth();
@@ -162,11 +143,10 @@ const WasteReport = () => {
   const getCurrentLocation = () => {
     setLocationLoading(true);
     if (!navigator.geolocation) {
-      showMessage("Geolocation not supported", "error");
+      toast.error("Geolocation not supported");
       setLocationLoading(false);
       return;
     }
-
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setLocation({
@@ -174,11 +154,11 @@ const WasteReport = () => {
           lng: position.coords.longitude,
         });
         setLocationLoading(false);
-        showMessage("Location detected", "success");
+        toast.success("Location detected");
       },
       (error) => {
         console.error("Location error:", error);
-        showMessage("Could not get location. Please enable GPS.", "error");
+        toast.error("Could not get location. Please enable GPS.");
         setLocationLoading(false);
       },
     );
@@ -188,14 +168,12 @@ const WasteReport = () => {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        showMessage("Image must be less than 5MB", "error");
+        toast.error("Image must be less than 5MB");
         return;
       }
       setImageFile(file);
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-      };
+      reader.onloadend = () => setImagePreview(reader.result);
       reader.readAsDataURL(file);
     }
   };
@@ -211,7 +189,7 @@ const WasteReport = () => {
       setShowCamera(true);
     } catch (error) {
       console.error("Camera error:", error);
-      showMessage("Could not access camera", "error");
+      toast.error("Could not access camera");
     }
   };
 
@@ -227,7 +205,6 @@ const WasteReport = () => {
         canvasRef.current.width,
         canvasRef.current.height,
       );
-
       canvasRef.current.toBlob(
         (blob) => {
           const file = new File([blob], "camera-capture.jpg", {
@@ -258,24 +235,20 @@ const WasteReport = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!formData.wasteType) {
-      showMessage("Please select waste type", "error");
+      toast.error("Please select waste type");
       return;
     }
-
     if (!formData.description) {
-      showMessage("Please provide a description", "error");
+      toast.error("Please provide a description");
       return;
     }
-
     if (!location) {
-      showMessage("Please enable location services", "error");
+      toast.error("Please enable location services");
       return;
     }
 
     setLoading(true);
-
     try {
       const selectedQuantity = quantities.find(
         (q) => q.value === formData.quantity,
@@ -297,12 +270,11 @@ const WasteReport = () => {
 
       await firebaseService.createWasteReport(reportData, imageFile);
       await firebaseService.updateUserPoints(currentUser.uid, pointsEarned);
-
-      showMessage(`Report submitted! +${pointsEarned} Eco Points`, "success");
+      toast.success(`Report submitted! +${pointsEarned} Eco Points`);
       navigate("/dashboard");
     } catch (error) {
       console.error("Error submitting report:", error);
-      showMessage("Failed to submit report", "error");
+      toast.error("Failed to submit report");
     } finally {
       setLoading(false);
     }
@@ -318,9 +290,10 @@ const WasteReport = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100/30 pb-20">
-      {/* Header with Back Button */}
+      {/* Header */}
       <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-green-100 px-4 py-4">
         <div className="flex items-center gap-3">
+          {/* ✅ Back button goes to /dashboard — correct for a nested route */}
           <Link
             to="/dashboard"
             className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:scale-95 transition-all"
@@ -385,7 +358,7 @@ const WasteReport = () => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Image Upload Section */}
+          {/* Image Upload */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Waste Image
@@ -436,7 +409,7 @@ const WasteReport = () => {
             )}
           </div>
 
-          {/* Waste Type Selection */}
+          {/* Waste Type */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Waste Type *
@@ -487,7 +460,6 @@ const WasteReport = () => {
 
           {/* Quantity & Urgency */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Quantity */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Quantity
@@ -522,7 +494,6 @@ const WasteReport = () => {
               </div>
             </div>
 
-            {/* Urgency */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Urgency Level
@@ -537,8 +508,8 @@ const WasteReport = () => {
                     }
                     className={`w-full p-2 rounded-lg border-2 transition-all ${
                       formData.urgency === urg.value
-                        ? `border-red-500 bg-red-50`
-                        : `border-gray-200 hover:border-red-300`
+                        ? "border-red-500 bg-red-50"
+                        : "border-gray-200 hover:border-red-300"
                     }`}
                   >
                     <div className="flex justify-between items-center">
@@ -575,7 +546,6 @@ const WasteReport = () => {
                 Refresh
               </button>
             </div>
-
             {locationLoading ? (
               <div className="flex items-center justify-center p-3 bg-gray-50 rounded-lg">
                 <Loader2 className="animate-spin text-red-500" size={20} />
@@ -617,7 +587,7 @@ const WasteReport = () => {
             )}
           </div>
 
-          {/* Summary Card */}
+          {/* Summary */}
           <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl p-4 border border-red-100">
             <h3 className="font-semibold text-gray-900 mb-2 text-sm flex items-center gap-2">
               <FileText size={14} className="text-red-500" />
@@ -651,7 +621,7 @@ const WasteReport = () => {
             </div>
           </div>
 
-          {/* Submit Button */}
+          {/* Submit */}
           <button
             type="submit"
             disabled={

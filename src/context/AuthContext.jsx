@@ -113,22 +113,15 @@ export const AuthProvider = ({ children }) => {
     handleRedirectResult();
   }, []);
 
-  // ── Auth state listener with console logging and redirect ─────────────────
+  // ── Auth state listener with redirect to dashboard ────────────────────────
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log("AUTH STATE:", user);
+      setCurrentUser(user);
 
       if (user) {
-        console.log("USER UID:", user.uid);
-        console.log("USER EMAIL:", user.email);
-        console.log("USER DISPLAY NAME:", user.displayName);
-
-        setCurrentUser(user);
-
         try {
           let profile = await firebaseService.getUserProfile(user.uid);
           if (!profile) {
-            console.log("No profile found, creating new profile...");
             profile = {
               fullname: user.displayName || user.email.split("@")[0],
               email: user.email,
@@ -138,34 +131,23 @@ export const AuthProvider = ({ children }) => {
               profilePicture: user.photoURL || null,
             };
             await firebaseService.createUserProfile(user.uid, profile);
-            console.log("Profile created successfully");
-          } else {
-            console.log("Profile found:", profile);
           }
           setUserProfile(profile);
           setUserRole(profile.role || "student");
 
           // Redirect to dashboard after successful login
+          // Only redirect if not already on dashboard or auth-callback
           const currentPath = window.location.pathname;
-          console.log("Current path:", currentPath);
-
           if (
             currentPath !== "/dashboard" &&
             currentPath !== "/auth-callback"
           ) {
-            console.log("Redirecting to /dashboard...");
             window.location.href = "/dashboard";
-          } else {
-            console.log(
-              "Already on dashboard or auth-callback, skipping redirect",
-            );
           }
         } catch (error) {
           console.error("Error loading user profile:", error);
         }
       } else {
-        console.log("NO USER FOUND - User is not logged in");
-        setCurrentUser(null);
         setUserProfile(null);
         setUserRole("student");
       }
@@ -191,7 +173,6 @@ export const AuthProvider = ({ children }) => {
     faculty = "",
   ) => {
     try {
-      console.log("Signing up user:", email);
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
@@ -207,11 +188,9 @@ export const AuthProvider = ({ children }) => {
         ecoPoints: 0,
         badge: "Eco Rookie",
       });
-      console.log("Signup successful for:", fullname);
       toast.success("Account created successfully! Please verify your email.");
       return userCredential.user;
     } catch (error) {
-      console.error("Signup error:", error);
       if (error.code === "auth/email-already-in-use") {
         toast.error("Email already in use. Please login instead.");
       } else if (error.code === "auth/weak-password") {
@@ -225,19 +204,16 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      console.log("Logging in user:", email);
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
         password,
       );
-      console.log("Login successful for:", userCredential.user.uid);
       toast.success(
         `Welcome back, ${userCredential.user.displayName || "Student"}!`,
       );
       return userCredential.user;
     } catch (error) {
-      console.error("Login error:", error);
       if (error.code === "auth/invalid-credential") {
         toast.error(
           "Invalid email or password. Please try again or create an account.",
@@ -275,7 +251,6 @@ export const AuthProvider = ({ children }) => {
   const loginWithGoogle = async (onPollingStart) => {
     // ── Tier 1: WebView ───────────────────────────────────────────────────
     if (isWebView()) {
-      console.log("WebView detected, using Chrome redirect flow");
       const sessionId = generateSessionId();
 
       // Store locally so we can clean up if needed
@@ -288,7 +263,6 @@ export const AuthProvider = ({ children }) => {
       if (typeof onPollingStart === "function") onPollingStart(sessionId);
 
       // Open Chrome
-      console.log("Opening Chrome with URL:", callbackUrl);
       openInChrome(callbackUrl);
 
       // Poll Firestore: watch apk_auth_sessions/<sessionId>
@@ -298,7 +272,6 @@ export const AuthProvider = ({ children }) => {
         const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
         const timeoutId = setTimeout(() => {
-          console.log("Polling timeout after 5 minutes");
           if (pollUnsubRef.current) pollUnsubRef.current();
           reject(new Error("auth/timeout"));
           toast.error("Sign-in timed out. Please try again.");
@@ -307,21 +280,15 @@ export const AuthProvider = ({ children }) => {
         pollUnsubRef.current = onSnapshot(
           sessionRef,
           async (snap) => {
-            if (!snap.exists()) {
-              console.log("Waiting for session document...");
-              return;
-            }
+            if (!snap.exists()) return; // Still waiting
 
-            console.log("Session document found!");
             clearTimeout(timeoutId);
             if (pollUnsubRef.current) pollUnsubRef.current();
 
             const data = snap.data();
-            console.log("Session data:", data);
 
             // Guard: reject expired sessions
             if (data.expiresAt && Date.now() > data.expiresAt) {
-              console.log("Session expired");
               await deleteDoc(sessionRef).catch(() => {});
               reject(new Error("auth/session-expired"));
               toast.error("Session expired. Please try again.");
@@ -335,13 +302,11 @@ export const AuthProvider = ({ children }) => {
               // Get user profile
               const profile = await firebaseService.getUserProfile(data.uid);
               if (profile) {
-                console.log("Profile found for user:", data.uid);
                 setUserProfile(profile);
                 setUserRole(profile.role || "student");
                 toast.success(`Welcome, ${data.displayName || "Student"}!`);
                 resolve({ uid: data.uid, ...profile });
               } else {
-                console.error("Profile not found for user:", data.uid);
                 throw new Error("Profile not found");
               }
             } catch (err) {
@@ -362,31 +327,25 @@ export const AuthProvider = ({ children }) => {
 
     // ── Tier 2: Mobile real browser — use redirect ────────────────────────
     if (isMobileDevice()) {
-      console.log("Mobile browser detected, using redirect flow");
       try {
         await signInWithRedirect(auth, googleProvider);
         return null;
       } catch (error) {
-        console.error("Redirect error:", error);
         toast.error("Google sign-in failed. Please try again.");
         throw error;
       }
     }
 
     // ── Tier 3: Desktop — popup with redirect fallback ────────────────────
-    console.log("Desktop detected, using popup flow");
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      console.log("Popup sign-in successful for:", result.user.uid);
       toast.success(`Welcome, ${result.user.displayName || "Student"}!`);
       return result.user;
     } catch (error) {
-      console.error("Popup error:", error);
       if (
         error.code === "auth/popup-blocked" ||
         error.code === "auth/popup-closed-by-user"
       ) {
-        console.log("Popup blocked, falling back to redirect");
         toast("Popup blocked — redirecting to Google sign-in…", { icon: "🔄" });
         await signInWithRedirect(auth, googleProvider);
         return null;
@@ -398,24 +357,19 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      console.log("Logging out user");
       await signOut(auth);
-      console.log("Logout successful");
       toast.success("Logged out successfully");
       window.location.href = "/";
     } catch (error) {
-      console.error("Logout error:", error);
       toast.error("Failed to log out. Please try again.");
     }
   };
 
   const resetPassword = async (email) => {
     try {
-      console.log("Sending password reset email to:", email);
       await sendPasswordResetEmail(auth, email);
       toast.success("Password reset email sent! Check your inbox.");
     } catch (error) {
-      console.error("Reset password error:", error);
       if (error.code === "auth/user-not-found") {
         toast.error("No account found with this email address.");
       } else {
@@ -428,14 +382,11 @@ export const AuthProvider = ({ children }) => {
   const updateUserProfile = async (data) => {
     if (currentUser && userProfile) {
       try {
-        console.log("Updating user profile for:", currentUser.uid);
         const updated = { ...userProfile, ...data };
         await firebaseService.updateUserProfile(currentUser.uid, updated);
         setUserProfile(updated);
-        console.log("Profile updated successfully");
         toast.success("Profile updated successfully!");
       } catch (error) {
-        console.error("Update profile error:", error);
         toast.error("Failed to update profile. Please try again.");
         throw error;
       }

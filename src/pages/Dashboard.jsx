@@ -14,10 +14,9 @@ import {
   Trophy,
   FileText,
   Camera,
+  Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-
-// ── Memoized sub-components so they don't re-render when parent state changes ──
 
 const StatCard = memo(({ icon: Icon, label, value, color, bgColor }) => (
   <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all">
@@ -135,9 +134,7 @@ const LeaderboardItem = memo(({ user, idx, currentUserId }) => (
   </div>
 ));
 
-// ── Main Dashboard ──────────────────────────────────────────────────────────
-
-const Dashboard = () => {
+const Dashboard = ({ onOpenScanner }) => {
   const { currentUser, userProfile } = useAuth();
   const [statistics, setStatistics] = useState({
     totalUsers: 0,
@@ -151,12 +148,10 @@ const Dashboard = () => {
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ── Fetch all dashboard data in parallel ──
   const fetchDashboardData = useCallback(async () => {
     if (!currentUser) return;
     try {
       setLoading(true);
-
       const [stats, verifications, events, marketplace, leaderboardData] =
         await Promise.all([
           firebaseService.getStatistics(),
@@ -165,7 +160,6 @@ const Dashboard = () => {
           firebaseService.getMarketplaceListings(),
           firebaseService.getLeaderboard(),
         ]);
-
       setStatistics(stats);
       setRecentVerifications(verifications.slice(0, 5));
       setUpcomingEvents(events.slice(0, 3));
@@ -182,7 +176,6 @@ const Dashboard = () => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
-  // ── Memoized derived values (don't recalculate on every render) ──
   const userRank = useMemo(() => {
     const idx = leaderboard.findIndex((u) => u.uid === currentUser?.uid);
     return idx === -1 ? "—" : `#${idx + 1}`;
@@ -323,24 +316,26 @@ const Dashboard = () => {
                 <CheckCircle size={18} className="text-green-600" />
                 Recent Verifications
               </h2>
-              <Link
-                to="/dashboard/verify"
+              <button
+                onClick={onOpenScanner}
                 className="text-sm text-green-600 hover:text-green-700 flex items-center gap-1"
               >
-                View All <ArrowRight size={14} />
-              </Link>
+                <Sparkles size={14} />
+                New Scan <ArrowRight size={14} />
+              </button>
             </div>
             <div className="divide-y divide-gray-100">
               {recentVerifications.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
                   <Recycle size={40} className="mx-auto mb-3 opacity-30" />
                   <p>No verifications yet</p>
-                  <Link
-                    to="/dashboard/verify"
-                    className="text-green-600 text-sm mt-2 inline-block"
+                  <button
+                    onClick={onOpenScanner}
+                    className="text-green-600 text-sm mt-2 inline-flex items-center gap-1 hover:underline"
                   >
-                    Start verifying items →
-                  </Link>
+                    <Sparkles size={14} />
+                    Scan your first item →
+                  </button>
                 </div>
               ) : (
                 recentVerifications.map((item, i) => (
@@ -452,33 +447,49 @@ const Dashboard = () => {
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4">
             <h3 className="font-semibold text-gray-900 mb-3">Quick Actions</h3>
             <div className="grid grid-cols-2 gap-2">
-              {[
-                {
-                  to: "/dashboard/report",
-                  icon: FileText,
-                  label: "Report Waste",
-                },
-                { to: "/dashboard/verify", icon: Camera, label: "Verify Item" },
-                {
-                  to: "/dashboard/marketplace",
-                  icon: ShoppingBag,
-                  label: "Exchange",
-                },
-                {
-                  to: "/dashboard/events",
-                  icon: Calendar,
-                  label: "Join Event",
-                },
-              ].map(({ to, icon: Icon, label }) => (
-                <Link
-                  key={to}
-                  to={to}
-                  className="bg-white rounded-lg p-3 text-center hover:shadow-md transition-all"
-                >
-                  <Icon size={18} className="mx-auto mb-1 text-green-600" />
-                  <p className="text-xs text-gray-700">{label}</p>
-                </Link>
-              ))}
+              <button
+                onClick={onOpenScanner}
+                className="bg-white rounded-lg p-3 text-center hover:shadow-md transition-all group"
+              >
+                <Sparkles
+                  size={18}
+                  className="mx-auto mb-1 text-green-600 group-hover:scale-110 transition-transform"
+                />
+                <p className="text-xs text-gray-700">AI Scan</p>
+              </button>
+
+              {/* ✅ FIXED: /dashboard/waste-report */}
+              <Link
+                to="/dashboard/waste-report"
+                className="bg-white rounded-lg p-3 text-center hover:shadow-md transition-all group"
+              >
+                <FileText
+                  size={18}
+                  className="mx-auto mb-1 text-green-600 group-hover:scale-110 transition-transform"
+                />
+                <p className="text-xs text-gray-700">Report Waste</p>
+              </Link>
+
+              <Link
+                to="/dashboard/marketplace"
+                className="bg-white rounded-lg p-3 text-center hover:shadow-md transition-all group"
+              >
+                <ShoppingBag
+                  size={18}
+                  className="mx-auto mb-1 text-green-600 group-hover:scale-110 transition-transform"
+                />
+                <p className="text-xs text-gray-700">Exchange</p>
+              </Link>
+              <Link
+                to="/dashboard/events"
+                className="bg-white rounded-lg p-3 text-center hover:shadow-md transition-all group"
+              >
+                <Calendar
+                  size={18}
+                  className="mx-auto mb-1 text-green-600 group-hover:scale-110 transition-transform"
+                />
+                <p className="text-xs text-gray-700">Join Event</p>
+              </Link>
             </div>
           </div>
         </div>
