@@ -1,4 +1,4 @@
-// src/pages/MobileProfile.jsx - Fix missing ChevronRight import
+// src/pages/MobileProfile.jsx - With input validation and green/white theme
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { firebaseService } from '../services/firebaseService';
@@ -8,17 +8,70 @@ import {
   LogOut, Settings, Heart, Clock, Trophy, BookOpen, Briefcase, 
   GraduationCap, Shield, Zap, Flame, Gift, Bell, HelpCircle,
   Sparkles, CircleDot, RefreshCw, Moon, Sun, Smartphone, Lock,
-  Trash2, Download, Share2, Info, ExternalLink, ChevronRight  // ← Add ChevronRight here
+  Trash2, Download, Share2, Info, ExternalLink, ChevronRight,
+  AlertCircle
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// ── Validation helpers ──────────────────────────────────────────────────────
+
+const validate = {
+  fullname: (v) => {
+    if (!v.trim()) return 'Full name is required.';
+    if (/[0-9]/.test(v)) return 'Name must not contain numbers.';
+    if (/[^a-zA-Z\s\-']/.test(v)) return 'Name must not contain symbols or special characters.';
+    if (v.trim().length < 2) return 'Name must be at least 2 characters.';
+    return '';
+  },
+  phone: (v) => {
+    if (!v) return ''; // optional
+    if (/[^0-9]/.test(v)) return 'Phone number must contain digits only (no spaces, dashes, or symbols).';
+    if (v.length < 10 || v.length > 11) return 'Phone number must be 10 or 11 digits.';
+    return '';
+  },
+  studentId: (v) => {
+    if (!v) return ''; // optional
+    if (/[^0-9]/.test(v)) return 'Student ID must contain digits only.';
+    if (v.length < 5) return 'Student ID must be at least 5 digits.';
+    return '';
+  },
+  bio: (v) => {
+    if (!v) return ''; // optional
+    if (/[0-9]/.test(v)) return 'Bio must not contain numbers.';
+    if (/[^a-zA-Z\s\-'.,!?]/.test(v)) return 'Bio contains invalid characters.';
+    if (v.length > 150) return `Bio must be 150 characters or fewer (${v.length}/150).`;
+    return '';
+  },
+  location: (v) => {
+    if (!v) return '';
+    if (/[^a-zA-Z\s\-',.]/.test(v)) return 'Location contains invalid characters.';
+    return '';
+  }
+};
+
+// Department and Faculty options
+const departments = [
+  'Computer Science', 'Engineering', 'Environmental Science', 
+  'Business Administration', 'Arts and Humanities', 'Sciences', 
+  'Social Sciences', 'Education', 'Law', 'Medicine', 'Other'
+];
+
+const faculties = [
+  'Faculty of Engineering', 'Faculty of Science', 'Faculty of Social Sciences',
+  'Faculty of Arts', 'Faculty of Management Sciences', 'Faculty of Agriculture',
+  'Faculty of Law', 'Faculty of Education', 'Faculty of Medicine', 'Other'
+];
+
+// ──────────────────────────────────────────────────────────────────────────
 
 const MobileProfile = () => {
   const { currentUser, userProfile, updateUserProfile, logout } = useAuth();
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [showSettings, setShowSettings] = useState(false);
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
   const [showPrivacySettings, setShowPrivacySettings] = useState(false);
@@ -55,19 +108,14 @@ const MobileProfile = () => {
     'Plastic Free', 'Renewable Energy', 'Conservation', 'Education'
   ];
 
-  // Load user preferences from localStorage
   useEffect(() => {
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
     const savedPushEnabled = localStorage.getItem('pushNotifications') !== 'false';
     const savedEmailEnabled = localStorage.getItem('emailNotifications') !== 'false';
-    
     setDarkMode(savedDarkMode);
     setPushEnabled(savedPushEnabled);
     setEmailEnabled(savedEmailEnabled);
-    
-    if (savedDarkMode) {
-      document.documentElement.classList.add('dark');
-    }
+    if (savedDarkMode) document.documentElement.classList.add('dark');
   }, []);
 
   useEffect(() => {
@@ -90,7 +138,6 @@ const MobileProfile = () => {
   useEffect(() => {
     const fetchUserStats = async () => {
       if (!currentUser) return;
-      
       try {
         const verifications = await firebaseService.getVerificationHistory(currentUser.uid);
         const reports = await firebaseService.getReports();
@@ -135,18 +182,54 @@ const MobileProfile = () => {
           streak,
           badges,
         });
-        
         setRecentActivity(verifications.slice(0, 5));
       } catch (error) {
         console.error('Error fetching user stats:', error);
       }
     };
-    
     fetchUserStats();
   }, [currentUser, userProfile]);
 
+  // Validate a single field and update error state
+  const validateField = (name, value) => {
+    const error = validate[name] ? validate[name](value) : '';
+    setFieldErrors(prev => ({ ...prev, [name]: error }));
+    return error;
+  };
+
+  const handleChange = (field, value) => {
+    // Strip non-digits live for phone and studentId
+    if (field === 'phone' || field === 'studentId') {
+      const digitsOnly = value.replace(/[^0-9]/g, '');
+      setFormData(prev => ({ ...prev, [field]: digitsOnly }));
+      validateField(field, digitsOnly);
+      return;
+    }
+    
+    // Cap bio at 150 chars
+    if (field === 'bio' && value.length > 150) return;
+
+    setFormData(prev => ({ ...prev, [field]: value }));
+    validateField(field, value);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const errors = {
+      fullname: validate.fullname(formData.fullname),
+      phone: validate.phone(formData.phone),
+      studentId: validate.studentId(formData.studentId),
+      bio: validate.bio(formData.bio),
+      location: validate.location(formData.location),
+    };
+    setFieldErrors(errors);
+
+    if (Object.values(errors).some(Boolean)) {
+      toast.error('Please fix the errors before saving.');
+      return;
+    }
+
     setLoading(true);
     try {
       await updateUserProfile(formData);
@@ -170,7 +253,7 @@ const MobileProfile = () => {
 
   const handleLogout = async () => {
     await logout();
-    navigate('/login');
+    navigate('/');
   };
 
   const toggleDarkMode = () => {
@@ -204,7 +287,7 @@ const MobileProfile = () => {
       localStorage.clear();
       sessionStorage.clear();
       await logout();
-      navigate('/login');
+      navigate('/');
       toast.success('Cache cleared successfully');
     }
   };
@@ -267,9 +350,17 @@ const MobileProfile = () => {
     { icon: Trophy, label: 'Rank', value: `#${userStats.rank}`, color: 'text-green-600', bg: 'bg-green-100' },
   ];
 
+  // Shared input class helper
+  const inputCls = (field) =>
+    `w-full px-4 py-2 bg-green-50 border rounded-lg text-sm focus:outline-none focus:ring-1 transition-colors ${
+      fieldErrors[field]
+        ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+        : 'border-green-200 focus:border-green-400 focus:ring-green-400'
+    }`;
+
   return (
     <div className="space-y-5 pb-20">
-      {/* Profile Header Card - Green Gradient */}
+      {/* Profile Header Card */}
       <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white shadow-lg">
         <div className="flex justify-between items-start mb-4">
           <div className="relative">
@@ -312,7 +403,7 @@ const MobileProfile = () => {
         </div>
       </div>
 
-      {/* Stats Grid - White Cards with Green Accents */}
+      {/* Stats Grid */}
       <div className="grid grid-cols-3 gap-3">
         {statCards.map((stat, index) => (
           <div key={index} className="bg-white rounded-xl p-3 shadow-sm border border-green-100 text-center">
@@ -435,85 +526,133 @@ const MobileProfile = () => {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-5 space-y-3">
-            <input
-              type="text"
-              name="fullname"
-              value={formData.fullname}
-              onChange={(e) => setFormData({ ...formData, fullname: e.target.value })}
-              className="w-full px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
-              placeholder="Full Name"
-            />
+            {/* Full Name */}
+            <div>
+              <input
+                type="text"
+                value={formData.fullname}
+                onChange={(e) => handleChange('fullname', e.target.value)}
+                className={inputCls('fullname')}
+                placeholder="Full Name *"
+              />
+              {fieldErrors.fullname && (
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} /> {fieldErrors.fullname}
+                </p>
+              )}
+            </div>
+
+            {/* Department */}
             <select
-              name="department"
               value={formData.department}
-              onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-              className="w-full px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
+              onChange={(e) => handleChange('department', e.target.value)}
+              className={inputCls('department')}
             >
               <option value="">Select Department</option>
-              <option value="Computer Science">Computer Science</option>
-              <option value="Engineering">Engineering</option>
-              <option value="Environmental Science">Environmental Science</option>
-              <option value="Business">Business</option>
-              <option value="Arts">Arts</option>
-              <option value="Sciences">Sciences</option>
-              <option value="Other">Other</option>
+              {departments.map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
             </select>
+
+            {/* Faculty */}
             <select
-              name="faculty"
               value={formData.faculty}
-              onChange={(e) => setFormData({ ...formData, faculty: e.target.value })}
-              className="w-full px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
+              onChange={(e) => handleChange('faculty', e.target.value)}
+              className={inputCls('faculty')}
             >
               <option value="">Select Faculty</option>
-              <option value="Engineering">Faculty of Engineering</option>
-              <option value="Science">Faculty of Science</option>
-              <option value="Social Sciences">Faculty of Social Sciences</option>
-              <option value="Arts">Faculty of Arts</option>
-              <option value="Management">Faculty of Management</option>
-              <option value="Agriculture">Faculty of Agriculture</option>
+              {faculties.map(fac => (
+                <option key={fac} value={fac}>{fac}</option>
+              ))}
             </select>
-            <input
-              type="text"
-              name="studentId"
-              value={formData.studentId}
-              onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-              className="w-full px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm"
-              placeholder="Student ID (optional)"
-            />
-            <input
-              type="tel"
-              name="phone"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm"
-              placeholder="Phone Number (optional)"
-            />
-            <input
-              type="text"
-              name="location"
-              value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              className="w-full px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm"
-              placeholder="Location (optional)"
-            />
+
+            {/* Student ID */}
+            <div>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={formData.studentId}
+                onChange={(e) => handleChange('studentId', e.target.value)}
+                className={inputCls('studentId')}
+                placeholder="Student ID (optional, digits only)"
+              />
+              {fieldErrors.studentId && (
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} /> {fieldErrors.studentId}
+                </p>
+              )}
+            </div>
+
+            {/* Phone */}
+            <div>
+              <input
+                type="tel"
+                inputMode="numeric"
+                value={formData.phone}
+                onChange={(e) => handleChange('phone', e.target.value)}
+                className={inputCls('phone')}
+                placeholder="Phone Number (optional, 10-11 digits)"
+                maxLength={11}
+              />
+              {fieldErrors.phone && (
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} /> {fieldErrors.phone}
+                </p>
+              )}
+              {!fieldErrors.phone && formData.phone && formData.phone.length >= 10 && (
+                <p className="text-xs text-green-600 mt-1">✓ Valid phone number format</p>
+              )}
+            </div>
+
+            {/* Location */}
+            <div>
+              <input
+                type="text"
+                value={formData.location}
+                onChange={(e) => handleChange('location', e.target.value)}
+                className={inputCls('location')}
+                placeholder="Location (optional)"
+              />
+              {fieldErrors.location && (
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} /> {fieldErrors.location}
+                </p>
+              )}
+            </div>
+
+            {/* Website */}
             <input
               type="url"
-              name="website"
               value={formData.website}
-              onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-              className="w-full px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm"
+              onChange={(e) => handleChange('website', e.target.value)}
+              className={inputCls('website')}
               placeholder="Website (optional)"
             />
-            <textarea
-              name="bio"
-              value={formData.bio}
-              onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-              className="w-full px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm resize-none"
-              rows="2"
-              placeholder="Tell us about yourself..."
-            />
+
+            {/* Bio with char counter */}
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-xs text-gray-500">Bio (optional, no numbers)</span>
+                <span className={`text-xs ${formData.bio.length >= 140 ? 'text-red-400' : 'text-gray-400'}`}>
+                  {formData.bio.length}/150
+                </span>
+              </div>
+              <textarea
+                value={formData.bio}
+                onChange={(e) => handleChange('bio', e.target.value)}
+                className={`${inputCls('bio')} resize-none`}
+                rows="3"
+                placeholder="Tell us about yourself (no numbers or special characters)..."
+                maxLength={150}
+              />
+              {fieldErrors.bio && (
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} /> {fieldErrors.bio}
+                </p>
+              )}
+            </div>
             
-            {/* Interests Section */}
+            {/* Interests */}
             <div>
               <label className="text-xs font-medium text-gray-700 mb-2 block">Interests</label>
               <div className="flex flex-wrap gap-2">
@@ -535,10 +674,36 @@ const MobileProfile = () => {
             </div>
             
             <div className="flex gap-3 pt-2">
-              <button type="submit" className="flex-1 bg-green-600 text-white font-medium py-2 rounded-lg text-sm hover:bg-green-700 transition-colors" disabled={loading}>
+              <button
+                type="submit"
+                className="flex-1 bg-green-600 text-white font-medium py-2 rounded-lg text-sm hover:bg-green-700 transition-colors disabled:opacity-50"
+                disabled={loading}
+              >
                 {loading ? <div className="spinner-sm mx-auto" /> : <><Save size={14} className="inline mr-1" /> Save</>}
               </button>
-              <button type="button" onClick={() => setIsEditing(false)} className="flex-1 bg-green-50 text-green-700 font-medium py-2 rounded-lg text-sm border border-green-200">
+              <button
+                type="button"
+                onClick={() => { 
+                  setIsEditing(false); 
+                  setFieldErrors({});
+                  // Reset form data to original
+                  if (userProfile) {
+                    setFormData({
+                      fullname: userProfile.fullname || '',
+                      email: userProfile.email || '',
+                      department: userProfile.department || '',
+                      faculty: userProfile.faculty || '',
+                      studentId: userProfile.studentId || '',
+                      phone: userProfile.phone || '',
+                      bio: userProfile.bio || '',
+                      location: userProfile.location || '',
+                      website: userProfile.website || '',
+                      interests: userProfile.interests || [],
+                    });
+                  }
+                }}
+                className="flex-1 bg-green-50 text-green-700 font-medium py-2 rounded-lg text-sm border border-green-200"
+              >
                 Cancel
               </button>
             </div>
@@ -561,7 +726,7 @@ const MobileProfile = () => {
                 <Sparkles size={20} className="text-green-400" />
               </div>
               <p className="text-sm text-gray-500">No activity yet</p>
-              <button onClick={() => navigate('/verify')} className="text-sm text-green-600 font-medium mt-2 hover:text-green-700">
+              <button onClick={() => navigate('/dashboard/verify')} className="text-sm text-green-600 font-medium mt-2 hover:text-green-700">
                 Start verifying →
               </button>
             </div>
@@ -586,7 +751,7 @@ const MobileProfile = () => {
         </div>
       </div>
 
-      {/* Main Settings Modal */}
+      {/* Settings Modal */}
       <AnimatePresence>
         {showSettings && (
           <>
@@ -617,8 +782,8 @@ const MobileProfile = () => {
                   </button>
                 </div>
                 
-                {/* Notification Settings */}
                 <div className="space-y-2">
+                  {/* Notifications */}
                   <button
                     onClick={() => {
                       setShowNotificationSettings(!showNotificationSettings);
@@ -635,7 +800,6 @@ const MobileProfile = () => {
                     <ChevronRight size={16} className="text-green-500" />
                   </button>
                   
-                  {/* Expanded Notification Settings */}
                   <AnimatePresence>
                     {showNotificationSettings && (
                       <motion.div
@@ -691,7 +855,6 @@ const MobileProfile = () => {
                     <ChevronRight size={16} className="text-green-500" />
                   </button>
                   
-                  {/* Expanded Privacy Settings */}
                   <AnimatePresence>
                     {showPrivacySettings && (
                       <motion.div
@@ -701,20 +864,14 @@ const MobileProfile = () => {
                         className="overflow-hidden pl-12 pr-3"
                       >
                         <div className="space-y-2 pb-2">
-                          <button
-                            onClick={handleExportData}
-                            className="flex items-center justify-between w-full py-2"
-                          >
+                          <button onClick={handleExportData} className="flex items-center justify-between w-full py-2">
                             <div>
                               <p className="text-sm font-medium text-gray-700">Export My Data</p>
                               <p className="text-xs text-gray-400">Download your information</p>
                             </div>
                             <Download size={16} className="text-green-600" />
                           </button>
-                          <button
-                            onClick={handleClearData}
-                            className="flex items-center justify-between w-full py-2"
-                          >
+                          <button onClick={handleClearData} className="flex items-center justify-between w-full py-2">
                             <div>
                               <p className="text-sm font-medium text-gray-700">Clear Cache</p>
                               <p className="text-xs text-gray-400">Remove locally stored data</p>
@@ -743,7 +900,6 @@ const MobileProfile = () => {
                     <ChevronRight size={16} className="text-green-500" />
                   </button>
                   
-                  {/* Expanded Help & Support */}
                   <AnimatePresence>
                     {showHelpSupport && (
                       <motion.div
@@ -753,32 +909,21 @@ const MobileProfile = () => {
                         className="overflow-hidden pl-12 pr-3"
                       >
                         <div className="space-y-2 pb-2">
-                          <a
-                            href="mailto:support@greenloop.com"
-                            className="flex items-center justify-between w-full py-2"
-                          >
+                          <a href="mailto:support@greenloop.com" className="flex items-center justify-between w-full py-2">
                             <div>
                               <p className="text-sm font-medium text-gray-700">Email Support</p>
                               <p className="text-xs text-gray-400">support@greenloop.com</p>
                             </div>
                             <ExternalLink size={16} className="text-green-600" />
                           </a>
-                          <Link
-                            to="/faq"
-                            className="flex items-center justify-between w-full py-2"
-                            onClick={() => setShowSettings(false)}
-                          >
+                          <Link to="/faq" className="flex items-center justify-between w-full py-2" onClick={() => setShowSettings(false)}>
                             <div>
                               <p className="text-sm font-medium text-gray-700">FAQ</p>
                               <p className="text-xs text-gray-400">Frequently asked questions</p>
                             </div>
                             <ChevronRight size={16} className="text-green-600" />
                           </Link>
-                          <Link
-                            to="/terms"
-                            className="flex items-center justify-between w-full py-2"
-                            onClick={() => setShowSettings(false)}
-                          >
+                          <Link to="/terms" className="flex items-center justify-between w-full py-2" onClick={() => setShowSettings(false)}>
                             <div>
                               <p className="text-sm font-medium text-gray-700">Terms of Service</p>
                               <p className="text-xs text-gray-400">Read our terms</p>
@@ -812,7 +957,6 @@ const MobileProfile = () => {
                   </div>
                 </div>
 
-                {/* Logout Button */}
                 <div className="mt-4 pt-3 border-t border-green-100">
                   <button
                     onClick={handleLogout}

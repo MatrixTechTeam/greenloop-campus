@@ -40,7 +40,6 @@ const AdminPanel = () => {
     category: 'cleanup', maxParticipants: '',
   });
 
-  // ✅ Refs hold latest data from ALL collections so stats are always computed from full state
   const dataRef = useRef({ users: [], reports: [], verifications: [], marketplace: [], events: [] });
 
   const computeAndSetStats = () => {
@@ -69,7 +68,13 @@ const AdminPanel = () => {
   };
 
   useEffect(() => {
-    if (userProfile?.role !== 'admin') return;
+    if (userProfile?.role !== 'admin') {
+      setLoading(false);
+      return;
+    }
+
+    // Safety: force loading off after 5s no matter what
+    const timeout = setTimeout(() => setLoading(false), 5000);
 
     const unsubs = [];
 
@@ -78,28 +83,29 @@ const AdminPanel = () => {
       dataRef.current.users = data;
       setUsers(data);
       computeAndSetStats();
-    }));
+      setLoading(false);
+    }, () => setLoading(false)));
 
     unsubs.push(onSnapshot(query(collection(db, 'reports'), orderBy('createdAt', 'desc')), snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate() }));
       dataRef.current.reports = data;
       setReports(data);
       computeAndSetStats();
-    }));
+    }, () => {}));
 
     unsubs.push(onSnapshot(query(collection(db, 'verificationReports'), orderBy('timestamp', 'desc'), limit(100)), snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data(), timestamp: d.data().timestamp?.toDate() }));
       dataRef.current.verifications = data;
       setVerifications(data);
       computeAndSetStats();
-    }));
+    }, () => {}));
 
     unsubs.push(onSnapshot(query(collection(db, 'marketplace'), orderBy('createdAt', 'desc')), snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate() }));
       dataRef.current.marketplace = data;
       setMarketplace(data);
       computeAndSetStats();
-    }));
+    }, () => {}));
 
     unsubs.push(onSnapshot(query(collection(db, 'events'), orderBy('date', 'desc')), snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data(), date: d.data().date?.toDate() }));
@@ -107,18 +113,19 @@ const AdminPanel = () => {
       setEvents(data);
       computeAndSetStats();
       setLoading(false);
-    }));
+    }, () => setLoading(false)));
 
-    return () => unsubs.forEach(u => u());
+    return () => {
+      unsubs.forEach(u => u());
+      clearTimeout(timeout);
+    };
   }, [userProfile]);
-
-  // ── All your action handlers unchanged ──────────────────────────────────────
 
   const updateUserRole = async (userId, newRole) => {
     try {
       await firebaseService.updateUserProfile(userId, { role: newRole });
       toast.success(`User role updated to ${newRole}`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update user role');
     }
   };
@@ -573,25 +580,39 @@ const AdminPanel = () => {
               <button onClick={() => { setShowEventModal(false); setEditingEvent(null); }} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
             </div>
             <form onSubmit={handleCreateEvent} className="p-6 space-y-4">
-              <div><label className="input-label">Event Title *</label>
-                <input type="text" value={eventData.title} onChange={e => setEventData({ ...eventData, title: e.target.value })} className="input-field" placeholder="Campus Cleanup Day" required /></div>
-              <div><label className="input-label">Description *</label>
-                <textarea value={eventData.description} onChange={e => setEventData({ ...eventData, description: e.target.value })} className="input-field resize-none" rows="3" required /></div>
-              <div><label className="input-label">Location *</label>
-                <input type="text" value={eventData.location} onChange={e => setEventData({ ...eventData, location: e.target.value })} className="input-field" required /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="input-label">Date *</label>
-                  <input type="date" value={eventData.date} onChange={e => setEventData({ ...eventData, date: e.target.value })} className="input-field" required /></div>
-                <div><label className="input-label">Time *</label>
-                  <input type="time" value={eventData.time} onChange={e => setEventData({ ...eventData, time: e.target.value })} className="input-field" required /></div>
+              <div>
+                <label className="input-label">Event Title *</label>
+                <input type="text" value={eventData.title} onChange={e => setEventData({ ...eventData, title: e.target.value })} className="input-field" placeholder="Campus Cleanup Day" required />
+              </div>
+              <div>
+                <label className="input-label">Description *</label>
+                <textarea value={eventData.description} onChange={e => setEventData({ ...eventData, description: e.target.value })} className="input-field resize-none" rows="3" required />
+              </div>
+              <div>
+                <label className="input-label">Location *</label>
+                <input type="text" value={eventData.location} onChange={e => setEventData({ ...eventData, location: e.target.value })} className="input-field" required />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="input-label">Category</label>
+                <div>
+                  <label className="input-label">Date *</label>
+                  <input type="date" value={eventData.date} onChange={e => setEventData({ ...eventData, date: e.target.value })} className="input-field" required />
+                </div>
+                <div>
+                  <label className="input-label">Time *</label>
+                  <input type="time" value={eventData.time} onChange={e => setEventData({ ...eventData, time: e.target.value })} className="input-field" required />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="input-label">Category</label>
                   <select value={eventData.category} onChange={e => setEventData({ ...eventData, category: e.target.value })} className="input-field">
                     {eventCategories.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                  </select></div>
-                <div><label className="input-label">Max Participants</label>
-                  <input type="number" value={eventData.maxParticipants} onChange={e => setEventData({ ...eventData, maxParticipants: e.target.value })} className="input-field" placeholder="Unlimited" /></div>
+                  </select>
+                </div>
+                <div>
+                  <label className="input-label">Max Participants</label>
+                  <input type="number" value={eventData.maxParticipants} onChange={e => setEventData({ ...eventData, maxParticipants: e.target.value })} className="input-field" placeholder="Unlimited" />
+                </div>
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => { setShowEventModal(false); setEditingEvent(null); }} className="btn-secondary flex-1">Cancel</button>
@@ -611,20 +632,28 @@ const AdminPanel = () => {
               <button onClick={() => setShowNotificationModal(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
             </div>
             <form onSubmit={sendNotification} className="p-6 space-y-4">
-              <div><label className="input-label">Send to</label>
+              <div>
+                <label className="input-label">Send to</label>
                 <select value={notificationData.sendTo} onChange={e => setNotificationData({ ...notificationData, sendTo: e.target.value })} className="input-field">
                   <option value="all">All Users ({statistics.totalUsers})</option>
                   <option value="student">Students Only</option>
                   <option value="volunteer">Volunteers Only</option>
                   <option value="admin">Admins Only</option>
-                </select></div>
-              <div><label className="input-label">Title</label>
-                <input type="text" value={notificationData.title} onChange={e => setNotificationData({ ...notificationData, title: e.target.value })} className="input-field" required /></div>
-              <div><label className="input-label">Message</label>
-                <textarea value={notificationData.message} onChange={e => setNotificationData({ ...notificationData, message: e.target.value })} className="input-field resize-none" rows="4" required /></div>
+                </select>
+              </div>
+              <div>
+                <label className="input-label">Title</label>
+                <input type="text" value={notificationData.title} onChange={e => setNotificationData({ ...notificationData, title: e.target.value })} className="input-field" required />
+              </div>
+              <div>
+                <label className="input-label">Message</label>
+                <textarea value={notificationData.message} onChange={e => setNotificationData({ ...notificationData, message: e.target.value })} className="input-field resize-none" rows="4" required />
+              </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => setShowNotificationModal(false)} className="btn-secondary flex-1">Cancel</button>
-                <button type="submit" className="btn-primary flex-1 flex items-center justify-center gap-2"><Send size={16} /> Send Broadcast</button>
+                <button type="submit" className="btn-primary flex-1 flex items-center justify-center gap-2">
+                  <Send size={16} /> Send Broadcast
+                </button>
               </div>
             </form>
           </div>

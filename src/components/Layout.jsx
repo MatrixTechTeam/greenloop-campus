@@ -1,4 +1,4 @@
-// src/components/Layout.jsx - Simplified without animations
+// src/components/Layout.jsx - Update the logout function
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -42,25 +42,27 @@ const Layout = () => {
     }
   };
 
+  // UPDATED: Logout now navigates to landing page
   const handleLogout = async () => {
     await logout();
-    navigate('/login');
+    toast.success('Logged out successfully');
+    navigate('/'); // Changed from '/login' to '/'
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const navItems = [
     { path: '/dashboard', icon: Home, label: 'Dashboard' },
-    { path: '/report', icon: FileText, label: 'Report Waste' },
-    { path: '/verify', icon: Camera, label: 'Verify' },
-    { path: '/marketplace', icon: Store, label: 'Exchange' },
-    { path: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
-    { path: '/events', icon: Calendar, label: 'Events' },
-    { path: '/profile', icon: User, label: 'Profile' },
+    { path: '/dashboard/report', icon: FileText, label: 'Report Waste' },
+    { path: '/dashboard/verify', icon: Camera, label: 'Verify' },
+    { path: '/dashboard/marketplace', icon: Store, label: 'Exchange' },
+    { path: '/dashboard/leaderboard', icon: Trophy, label: 'Leaderboard' },
+    { path: '/dashboard/events', icon: Calendar, label: 'Events' },
+    { path: '/dashboard/profile', icon: User, label: 'Profile' },
   ];
   
   if (userProfile?.role === 'admin') {
-    navItems.push({ path: '/admin', icon: Shield, label: 'Admin' });
+    navItems.push({ path: '/dashboard/admin', icon: Shield, label: 'Admin' });
   }
 
   if (loading) {
@@ -93,7 +95,7 @@ const Layout = () => {
               <input 
                 type="text" 
                 placeholder="Search..." 
-                className="pl-10 pr-4 py-2 bg-gray-100 rounded-lg text-sm w-80 focus:outline-none focus:ring-2 focus:ring-primary-500" 
+                className="pl-10 pr-4 py-2 bg-gray-100 rounded-lg text-sm w-80 focus:outline-none focus:ring-2 focus:ring-green-500" 
               />
             </div>
           </div>
@@ -122,7 +124,7 @@ const Layout = () => {
                       notifications.map(notif => (
                         <div 
                           key={notif.id} 
-                          className={`p-3 border-b border-gray-100 hover:bg-gray-50 ${!notif.read ? 'bg-primary-50' : ''}`}
+                          className={`p-3 border-b border-gray-100 hover:bg-gray-50 ${!notif.read ? 'bg-green-50' : ''}`}
                         >
                           <p className="text-sm font-medium">{notif.title}</p>
                           <p className="text-xs text-gray-500 mt-1">{notif.message}</p>
@@ -138,7 +140,7 @@ const Layout = () => {
                 <p className="text-sm font-semibold text-gray-900">{userProfile?.fullname}</p>
                 <p className="text-xs text-gray-500">{userProfile?.email}</p>
               </div>
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-full flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-green-600 to-green-700 rounded-full flex items-center justify-center">
                 <span className="text-white font-bold">{userProfile?.fullname?.charAt(0) || 'U'}</span>
               </div>
             </div>
@@ -151,7 +153,7 @@ const Layout = () => {
         {/* Logo */}
         <div className={`p-5 border-b border-gray-200 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-gradient-to-br from-green-600 to-green-700 rounded-lg flex items-center justify-center">
               <Leaf className="w-4 h-4 text-white" />
             </div>
             {!sidebarCollapsed && <span className="font-bold text-lg text-gray-900">GreenLoop</span>}
@@ -161,7 +163,7 @@ const Layout = () => {
         {/* User Profile (Collapsed) */}
         {sidebarCollapsed && (
           <div className="p-3 border-b border-gray-200 flex justify-center">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-green-600 to-green-700 rounded-full flex items-center justify-center">
               <span className="text-white font-bold text-sm">{userProfile?.fullname?.charAt(0) || 'U'}</span>
             </div>
           </div>
@@ -171,8 +173,8 @@ const Layout = () => {
         {!sidebarCollapsed && (
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-100 to-primary-200 rounded-full flex items-center justify-center">
-                <span className="text-primary-700 font-semibold">{userProfile?.fullname?.charAt(0) || 'U'}</span>
+              <div className="w-10 h-10 bg-gradient-to-br from-green-100 to-green-200 rounded-full flex items-center justify-center">
+                <span className="text-green-700 font-semibold">{userProfile?.fullname?.charAt(0) || 'U'}</span>
               </div>
               <div className="flex-1">
                 <p className="font-semibold text-gray-900 text-sm truncate">{userProfile?.fullname}</p>
@@ -196,7 +198,7 @@ const Layout = () => {
                 key={item.path} 
                 to={item.path} 
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
-                  isActive ? 'bg-primary-50 text-primary-700' : 'text-gray-700 hover:bg-gray-100'
+                  isActive ? 'bg-green-50 text-green-700' : 'text-gray-700 hover:bg-gray-100'
                 } ${sidebarCollapsed ? 'justify-center' : ''}`}
               >
                 <item.icon size={20} />
