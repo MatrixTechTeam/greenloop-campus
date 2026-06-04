@@ -1,22 +1,92 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/leaf.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-    <meta name="theme-color" content="#10b981" />
-    <title>GreenLoop Campus | AI-Powered Sustainability Platform</title>
-    <!-- Remove Google Fonts links -->
-    <!-- Use system fonts instead -->
-    <style>
-      /* Fallback fonts */
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      }
-    </style>
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover"
+    />
+    <title>GreenLoop</title>
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- ✅ ADD YOUR SCRIPT HERE - Before closing body tag -->
+    <script>
+      // Request permissions for WebView
+      async function requestPermissions() {
+        // Check if running in WebView/App by checking user agent
+        const userAgent = window.navigator.userAgent;
+        const isApp =
+          userAgent.indexOf("AppCreator24") !== -1 ||
+          userAgent.indexOf("WebView") !== -1 ||
+          userAgent.indexOf("Android") !== -1;
+
+        console.log("User Agent:", userAgent);
+        console.log("Is App/WebView:", isApp);
+
+        if (isApp) {
+          console.log("Running in WebView/App, requesting permissions...");
+
+          // Request camera permission
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+              });
+              stream.getTracks().forEach((track) => track.stop());
+              console.log("Camera permission granted");
+            } catch (err) {
+              console.error("Camera permission denied:", err);
+              if (err.name === "NotAllowedError") {
+                showPermissionGuide();
+              }
+            }
+          } else {
+            console.log("Camera API not available");
+          }
+
+          // Request location permission
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                console.log("Location permission granted", position);
+              },
+              (error) => {
+                console.error("Location permission denied:", error);
+                if (error.code === error.PERMISSION_DENIED) {
+                  showPermissionGuide();
+                }
+              },
+            );
+          } else {
+            console.log("Geolocation API not available");
+          }
+        }
+      }
+
+      // Show guide if permissions are denied
+      function showPermissionGuide() {
+        if (document.getElementById("permission-guide")) return;
+
+        const guide = document.createElement("div");
+        guide.id = "permission-guide";
+        guide.innerHTML = `
+              <div style="position: fixed; bottom: 20px; left: 20px; right: 20px; background: #ff9800; color: white; padding: 15px; border-radius: 12px; z-index: 10000; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                  <strong>📱 Enable Permissions</strong><br>
+                  Go to <strong>App Settings → Permissions</strong><br>
+                  Enable <strong>Camera</strong> and <strong>Location</strong>
+                  <button onclick="this.parentElement.parentElement.remove()" style="margin-top: 8px; background: white; border: none; padding: 5px 12px; border-radius: 6px; color: #ff9800; cursor: pointer;">OK</button>
+              </div>
+          `;
+        document.body.appendChild(guide);
+      }
+
+      // Call on page load with a slight delay
+      setTimeout(requestPermissions, 1000);
+    </script>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
