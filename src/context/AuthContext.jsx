@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.jsx - Fixed for both desktop and mobile
+// src/contexts/AuthContext.jsx - Cleaned up version
 import React, { createContext, useContext, useState, useEffect } from "react";
 import {
   signInWithEmailAndPassword,
@@ -32,12 +32,17 @@ export const AuthProvider = ({ children }) => {
         const result = await getRedirectResult(auth);
         if (result?.user) {
           toast.success(`Welcome, ${result.user.displayName || "Student"}!`);
-          // Force reload to update auth state
-          window.location.href = "/dashboard";
+          // Small delay to ensure toast is shown
+          setTimeout(() => {
+            window.location.href = "/dashboard";
+          }, 500);
         }
       } catch (error) {
         console.error("Redirect result error:", error);
-        if (error.code !== "auth/popup-closed-by-user") {
+        if (
+          error.code !== "auth/popup-closed-by-user" &&
+          error.code !== "auth/redirect-cancelled-by-user"
+        ) {
           toast.error("Google sign-in failed. Please try again.");
         }
       }
@@ -46,6 +51,7 @@ export const AuthProvider = ({ children }) => {
     handleRedirectResult();
   }, []);
 
+  // Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
@@ -155,7 +161,7 @@ export const AuthProvider = ({ children }) => {
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
       if (isMobile) {
-        // Use redirect for mobile devices (avoids popup blockers)
+        // Use redirect for mobile devices (avoids popup blockers and 403 error)
         await signInWithRedirect(auth, googleProvider);
         return null; // Will redirect, no need to return user
       } else {

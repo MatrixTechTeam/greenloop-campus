@@ -1,7 +1,7 @@
-// src/pages/Login.jsx - Clean version with single handleGoogleLogin
+// src/pages/Login.jsx - Fixed import path
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/AuthContext"; // Fixed: changed from '../context/AuthContext' to '../contexts/AuthContext'
 import {
   Leaf,
   Mail,
@@ -73,12 +73,15 @@ const Login = () => {
     }
   };
 
-  // Single Google login handler - using popup only
+  // Enhanced Google login handler - works with both popup and redirect
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      await loginWithGoogle();
-      navigate("/dashboard");
+      const result = await loginWithGoogle();
+      // If result is null (redirect case), don't navigate - page will reload
+      if (result) {
+        navigate("/dashboard");
+      }
     } catch (error) {
       console.error("Google login error:", error);
       // Error handling is already in AuthContext
