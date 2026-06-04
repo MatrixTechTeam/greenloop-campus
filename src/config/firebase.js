@@ -1,12 +1,19 @@
 // src/config/firebase.js
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  browserPopupRedirectResolver,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDK80POGGiqAyujoB4nXPuQrE7jG8ejkuk",
   authDomain: "lordshipnkanta-3f88e.firebaseapp.com",
+  authDomain: "greenloop-campus.vercel.app",
   projectId: "lordshipnkanta-3f88e",
   storageBucket: "lordshipnkanta-3f88e.firebasestorage.app",
   messagingSenderId: "248338680557",
@@ -20,10 +27,8 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// Configure Google Provider
+// Configure Google Provider with custom parameters
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope("email");
-googleProvider.addScope("profile");
 googleProvider.setCustomParameters({
   prompt: "select_account",
 });
