@@ -1,5 +1,11 @@
 // src/contexts/AuthContext.jsx
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -7,57 +13,69 @@ import {
   sendPasswordResetEmail,
   signInWithPopup,
   signInWithRedirect,
+  signInWithCustomToken,
   getRedirectResult,
   updateProfile,
   onAuthStateChanged,
 } from "firebase/auth";
-import { auth, googleProvider } from "../config/firebase";
+import { doc, getDoc, deleteDoc, onSnapshot } from "firebase/firestore";
+import { auth, googleProvider, db } from "../config/firebase";
 import { firebaseService } from "../services/firebaseService";
 import toast from "react-hot-toast";
 
 const AuthContext = createContext();
-
 export const useAuth = () => useContext(AuthContext);
 
-// ─── WebView / user-agent helpers ────────────────────────────────────────────
+// ─── Environment helpers ─────────────────────────────────────────────────────
 
-/**
- * Returns true when the page is running inside a WebView
- * (Android WebView, iOS WKWebView / UIWebView, Facebook in-app browser,
- *  Instagram, Twitter, LinkedIn, Snapchat, etc.)
- * Google blocks OAuth for ALL of these → must open a real browser instead.
- */
 export const isWebView = () => {
   const ua = navigator.userAgent || "";
-
-  // Android WebView signature
   if (/wv/.test(ua) && /Android/.test(ua)) return true;
-
-  // iOS WKWebView / UIWebView – missing "Safari" but has "AppleWebKit"
   if (
     /iPhone|iPad|iPod/.test(ua) &&
     !/Safari/.test(ua) &&
     /AppleWebKit/.test(ua)
   )
     return true;
-
-  // Common in-app browsers
   if (
     /FBAN|FBAV|Instagram|Twitter|LinkedIn|Snapchat|TikTok|Line|WhatsApp/.test(
       ua,
     )
   )
     return true;
-
-  // Generic WebView marker
   if (/WebView/.test(ua)) return true;
-
   return false;
 };
 
-/** True when running on any mobile device (regardless of WebView). */
 export const isMobileDevice = () =>
   /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+/**
+ * Generates a random session ID used to link the APK polling instance
+ * with the Chrome tab that completes the OAuth flow.
+ */
+const generateSessionId = () =>
+  Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+/**
+ * Opens a URL in the device's default browser (Chrome on most Androids).
+ * Uses Android Intent URL which escapes the WebView entirely.
+ */
+export const openInChrome = (url) => {
+  const intentUrl =
+    `intent://${url.replace(/^https?:\/\//, "")}` +
+    `#Intent;scheme=https;action=android.intent.action.VIEW;` +
+    `package=com.android.chrome;end`;
+
+  const a = document.createElement("a");
+  a.href = intentUrl;
+  a.click();
+
+  // Fallback after 1.5 s for devices without Chrome
+  setTimeout(() => {
+    window.location.href = url;
+  }, 1500);
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -67,7 +85,10 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState("student");
 
-  // ── Handle redirect result (fires after Google redirect back to app) ────────
+  // Ref to hold the Firestore unsubscribe for APK session polling
+  const pollUnsubRef = useRef(null);
+
+  // ── Handle redirect result (fires when Chrome redirects back) ─────────────
   useEffect(() => {
     const handleRedirectResult = async () => {
       try {
@@ -79,7 +100,6 @@ export const AuthProvider = ({ children }) => {
           }, 500);
         }
       } catch (error) {
-        console.error("Redirect result error:", error);
         const ignored = [
           "auth/popup-closed-by-user",
           "auth/redirect-cancelled-by-user",
@@ -90,7 +110,6 @@ export const AuthProvider = ({ children }) => {
         }
       }
     };
-
     handleRedirectResult();
   }, []);
 
@@ -98,7 +117,6 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
-
       if (user) {
         try {
           let profile = await firebaseService.getUserProfile(user.uid);
@@ -122,11 +140,16 @@ export const AuthProvider = ({ children }) => {
         setUserProfile(null);
         setUserRole("student");
       }
-
       setLoading(false);
     });
-
     return () => unsubscribe();
+  }, []);
+
+  // ── Cleanup poll on unmount ────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      if (pollUnsubRef.current) pollUnsubRef.current();
+    };
   }, []);
 
   // ── Auth methods ───────────────────────────────────────────────────────────
@@ -157,7 +180,6 @@ export const AuthProvider = ({ children }) => {
       toast.success("Account created successfully! Please verify your email.");
       return userCredential.user;
     } catch (error) {
-      console.error("Signup error:", error);
       if (error.code === "auth/email-already-in-use") {
         toast.error("Email already in use. Please login instead.");
       } else if (error.code === "auth/weak-password") {
@@ -181,7 +203,6 @@ export const AuthProvider = ({ children }) => {
       );
       return userCredential.user;
     } catch (error) {
-      console.error("Login error:", error);
       if (error.code === "auth/invalid-credential") {
         toast.error(
           "Invalid email or password. Please try again or create an account.",
@@ -202,49 +223,148 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
-   * Google sign-in with three-tier strategy:
+   * loginWithGoogle — three-tier strategy:
    *
-   *  1. WebView detected → cannot use popup OR redirect inside WebView.
-   *     Throw a special error so the UI can show an "Open in browser" prompt.
+   * Tier 1 (WebView / APK):
+   *   - Generate a session ID
+   *   - Open Chrome with /auth-callback?session=<id>
+   *   - Start polling Firestore for apk_auth_sessions/<id>
+   *   - When Chrome writes the session doc, read it and sign in via
+   *     signInWithCustomToken (requires a Cloud Function) OR reconstruct
+   *     the session by signing in with the stored uid directly via
+   *     a lightweight custom flow.
    *
-   *  2. Mobile real browser → use redirect (avoids popup blocker issues).
-   *
-   *  3. Desktop → use popup first; fall back to redirect if popup is blocked.
+   * Tier 2 (Mobile real browser): redirect
+   * Tier 3 (Desktop): popup → redirect fallback
    */
-  const loginWithGoogle = async () => {
-    // ── Tier 1: WebView — Google blocks OAuth here entirely ──────────────────
+  const loginWithGoogle = async (onPollingStart) => {
+    // ── Tier 1: WebView ───────────────────────────────────────────────────
     if (isWebView()) {
-      const webViewError = new Error(
-        "Google sign-in is not supported inside in-app browsers.\n" +
-          "Please open this page in Chrome or Safari.",
-      );
-      webViewError.code = "auth/webview-blocked";
-      toast.error("Please open in Chrome or Safari to sign in with Google.", {
-        duration: 5000,
+      const sessionId = generateSessionId();
+
+      // Store locally so we can clean up if needed
+      sessionStorage.setItem("apkSessionId", sessionId);
+
+      // Build the callback URL on your hosted site
+      const callbackUrl = `${window.location.origin}/auth-callback?session=${sessionId}`;
+
+      // Notify the UI that we're now polling (shows a spinner/message)
+      if (typeof onPollingStart === "function") onPollingStart(sessionId);
+
+      // Open Chrome
+      openInChrome(callbackUrl);
+
+      // Poll Firestore: watch apk_auth_sessions/<sessionId>
+      // The AuthCallback page writes this doc after successful Google sign-in
+      return new Promise((resolve, reject) => {
+        const sessionRef = doc(db, "apk_auth_sessions", sessionId);
+        const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+        const timeoutId = setTimeout(() => {
+          if (pollUnsubRef.current) pollUnsubRef.current();
+          reject(new Error("auth/timeout"));
+          toast.error("Sign-in timed out. Please try again.");
+        }, TIMEOUT_MS);
+
+        pollUnsubRef.current = onSnapshot(
+          sessionRef,
+          async (snap) => {
+            if (!snap.exists()) return; // Still waiting
+
+            clearTimeout(timeoutId);
+            if (pollUnsubRef.current) pollUnsubRef.current();
+
+            const data = snap.data();
+
+            // Guard: reject expired sessions
+            if (data.expiresAt && Date.now() > data.expiresAt) {
+              await deleteDoc(sessionRef).catch(() => {});
+              reject(new Error("auth/session-expired"));
+              toast.error("Session expired. Please try again.");
+              return;
+            }
+
+            try {
+              // ── Re-authenticate in the WebView using the stored uid ──────
+              // We use signInWithEmailAndPassword won't work here since we
+              // don't have the password. Instead we use a Firebase Custom Token.
+              //
+              // OPTION A (recommended): Call a Cloud Function that mints a
+              // custom token for data.uid and return it here.
+              //
+              // OPTION B (simpler, no Cloud Function): Store enough info to
+              // just update local state directly — works if you trust Firestore
+              // security rules to protect the session doc.
+              //
+              // We implement Option B here. Swap to Option A for production.
+
+              // Clean up the session document
+              await deleteDoc(sessionRef).catch(() => {});
+
+              // Manually set user state from the session data
+              // The user is already signed into Firebase Auth via Chrome, but
+              // the WebView has its own auth state. We use the stored profile.
+              const profile = await firebaseService.getUserProfile(data.uid);
+              if (profile) {
+                // Simulate a logged-in state by updating context directly.
+                // For full auth token support, implement a Cloud Function
+                // that returns a custom token (see README comment below).
+                setUserProfile(profile);
+                setUserRole(profile.role || "student");
+
+                // ── IMPORTANT: to get a real Firebase Auth session in the
+                // WebView you MUST mint a custom token. Add this Cloud Function
+                // to your Firebase project:
+                //
+                // exports.mintToken = functions.https.onCall(async (data) => {
+                //   return { token: await admin.auth().createCustomToken(data.uid) };
+                // });
+                //
+                // Then replace the lines above with:
+                //
+                // const fn = httpsCallable(functions, "mintToken");
+                // const { data: { token } } = await fn({ uid: data.uid });
+                // const userCred = await signInWithCustomToken(auth, token);
+                // resolve(userCred.user);
+
+                toast.success(`Welcome, ${data.displayName || "Student"}!`);
+                resolve({ uid: data.uid, ...profile });
+              } else {
+                throw new Error("Profile not found");
+              }
+            } catch (err) {
+              console.error("Session restore error:", err);
+              toast.error("Sign-in failed. Please try again.");
+              reject(err);
+            }
+          },
+          (err) => {
+            clearTimeout(timeoutId);
+            console.error("Firestore poll error:", err);
+            toast.error("Sign-in failed. Please try again.");
+            reject(err);
+          },
+        );
       });
-      throw webViewError;
     }
 
-    // ── Tier 2: Mobile real browser — use redirect ───────────────────────────
+    // ── Tier 2: Mobile real browser — use redirect ────────────────────────
     if (isMobileDevice()) {
       try {
         await signInWithRedirect(auth, googleProvider);
-        return null; // Page will reload after redirect
+        return null;
       } catch (error) {
-        console.error("Mobile redirect error:", error);
         toast.error("Google sign-in failed. Please try again.");
         throw error;
       }
     }
 
-    // ── Tier 3: Desktop — try popup, fall back to redirect ───────────────────
+    // ── Tier 3: Desktop — popup with redirect fallback ────────────────────
     try {
       const result = await signInWithPopup(auth, googleProvider);
       toast.success(`Welcome, ${result.user.displayName || "Student"}!`);
       return result.user;
     } catch (error) {
-      console.error("Google popup error:", error);
-
       if (
         error.code === "auth/popup-blocked" ||
         error.code === "auth/popup-closed-by-user"
@@ -253,7 +373,6 @@ export const AuthProvider = ({ children }) => {
         await signInWithRedirect(auth, googleProvider);
         return null;
       }
-
       toast.error("Google sign-in failed. Please try again.");
       throw error;
     }
@@ -264,7 +383,6 @@ export const AuthProvider = ({ children }) => {
       await signOut(auth);
       toast.success("Logged out successfully");
     } catch (error) {
-      console.error("Logout error:", error);
       toast.error("Failed to log out. Please try again.");
     }
   };
@@ -274,7 +392,6 @@ export const AuthProvider = ({ children }) => {
       await sendPasswordResetEmail(auth, email);
       toast.success("Password reset email sent! Check your inbox.");
     } catch (error) {
-      console.error("Reset password error:", error);
       if (error.code === "auth/user-not-found") {
         toast.error("No account found with this email address.");
       } else {
@@ -292,7 +409,6 @@ export const AuthProvider = ({ children }) => {
         setUserProfile(updated);
         toast.success("Profile updated successfully!");
       } catch (error) {
-        console.error("Update profile error:", error);
         toast.error("Failed to update profile. Please try again.");
         throw error;
       }
