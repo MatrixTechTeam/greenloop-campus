@@ -6,6 +6,8 @@ import {
   signInWithPopup,
   signInWithRedirect,
   browserPopupRedirectResolver,
+  setPersistence,
+  browserLocalPersistence,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
@@ -13,7 +15,6 @@ import { getStorage } from "firebase/storage";
 const firebaseConfig = {
   apiKey: "AIzaSyDK80POGGiqAyujoB4nXPuQrE7jG8ejkuk",
   authDomain: "lordshipnkanta-3f88e.firebaseapp.com",
-  authDomain: "greenloop-campus.vercel.app",
   projectId: "lordshipnkanta-3f88e",
   storageBucket: "lordshipnkanta-3f88e.firebasestorage.app",
   messagingSenderId: "248338680557",
@@ -24,6 +25,12 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
+
+// Set persistence to LOCAL (user stays logged in even after closing browser)
+setPersistence(auth, browserLocalPersistence)
+  .then(() => console.log("✅ Firebase persistence enabled (local)"))
+  .catch((error) => console.error("❌ Persistence error:", error));
+
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
