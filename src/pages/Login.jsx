@@ -1,7 +1,7 @@
-// src/pages/Login.jsx - Fixed import path
+// src/pages/Login.jsx
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext"; // Fixed: changed from '../context/AuthContext' to '../contexts/AuthContext'
+import { useAuth, isWebView, isMobileDevice } from "../context/AuthContext";
 import {
   Leaf,
   Mail,
@@ -11,6 +11,8 @@ import {
   LogIn,
   ArrowLeft,
   CheckCircle,
+  ExternalLink,
+  AlertTriangle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -21,6 +23,59 @@ const validatePassword = (password) => {
   if (!/[a-z]/.test(password)) errors.push("At least one lowercase letter");
   return errors;
 };
+
+// ─── WebView warning banner ────────────────────────────────────────────────
+
+const WebViewBanner = () => {
+  const openInBrowser = () => {
+    // Build the current URL and attempt to open it in the default browser.
+    // Most platforms honour this; for iOS in-app browsers we provide a copy
+    // fallback because JS window.open is blocked there.
+    const url = window.location.href;
+    const opened = window.open(url, "_blank");
+    if (!opened) {
+      // Fallback: copy URL to clipboard
+      navigator.clipboard
+        ?.writeText(url)
+        .then(() => {
+          toast.success("Link copied! Paste it in Chrome or Safari.", {
+            duration: 5000,
+          });
+        })
+        .catch(() => {
+          toast("Open this page in Chrome or Safari to sign in with Google.", {
+            icon: "🌐",
+            duration: 6000,
+          });
+        });
+    }
+  };
+
+  return (
+    <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 flex gap-3">
+      <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-amber-800 mb-1">
+          Google sign-in unavailable here
+        </p>
+        <p className="text-xs text-amber-700 mb-3">
+          You're using an in-app browser. Google blocks sign-in for security
+          reasons. Open this page in <strong>Chrome</strong> or{" "}
+          <strong>Safari</strong> to use Google sign-in.
+        </p>
+        <button
+          onClick={openInBrowser}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900 transition-colors"
+        >
+          <ExternalLink size={13} />
+          Open in browser
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ─── Component ─────────────────────────────────────────────────────────────
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -36,6 +91,10 @@ const Login = () => {
   const { login, loginWithGoogle, resetPassword } = useAuth();
   const navigate = useNavigate();
 
+  // Detect environment once on render
+  const inWebView = isWebView();
+
+  // ── Password helpers ──────────────────────────────────────────────────────
   const handlePasswordChange = (e) => {
     const val = e.target.value;
     setPassword(val);
@@ -47,6 +106,7 @@ const Login = () => {
     setPasswordErrors(validatePassword(password));
   };
 
+  // ── Submit handlers ───────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
@@ -67,24 +127,26 @@ const Login = () => {
       navigate("/dashboard");
     } catch (error) {
       console.error("Login error:", error);
-      // Error handling is already in AuthContext
+      // Toast already fired in AuthContext
     } finally {
       setLoading(false);
     }
   };
 
-  // Enhanced Google login handler - works with both popup and redirect
   const handleGoogleLogin = async () => {
+    // If inside a WebView the AuthContext will throw with code
+    // "auth/webview-blocked" and show the toast itself — nothing
+    // more to do here.
+    if (inWebView) return;
+
     setLoading(true);
     try {
       const result = await loginWithGoogle();
-      // If result is null (redirect case), don't navigate - page will reload
-      if (result) {
-        navigate("/dashboard");
-      }
+      // result is null when redirect was used (page will reload)
+      if (result) navigate("/dashboard");
     } catch (error) {
       console.error("Google login error:", error);
-      // Error handling is already in AuthContext
+      // Toast already fired in AuthContext
     } finally {
       setLoading(false);
     }
@@ -107,6 +169,7 @@ const Login = () => {
     }
   };
 
+  // ── Sub-components ────────────────────────────────────────────────────────
   const GoogleIcon = () => (
     <svg className="w-5 h-5" viewBox="0 0 24 24">
       <path
@@ -128,7 +191,6 @@ const Login = () => {
     </svg>
   );
 
-  // Reset Success Popup
   const ResetSuccessPopup = () => (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center animate-slide-up">
@@ -163,18 +225,19 @@ const Login = () => {
     </div>
   );
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-green-50/50 via-white to-green-50/30">
       {resetSent && <ResetSuccessPopup />}
 
-      {/* Background */}
+      {/* Background blobs */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-green-100 rounded-full blur-3xl opacity-30"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-green-100 rounded-full blur-3xl opacity-30"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-green-50 rounded-full blur-3xl opacity-20"></div>
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-green-100 rounded-full blur-3xl opacity-30" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-green-100 rounded-full blur-3xl opacity-30" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-green-50 rounded-full blur-3xl opacity-20" />
       </div>
 
-      {/* Floating Leaves */}
+      {/* Floating leaves */}
       <div className="absolute top-20 left-[10%] animate-float opacity-10">
         <Leaf className="w-16 h-16 text-green-600" />
       </div>
@@ -196,7 +259,7 @@ const Login = () => {
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
               <div className="relative">
-                <div className="absolute inset-0 bg-green-500 blur-xl opacity-20 animate-pulse"></div>
+                <div className="absolute inset-0 bg-green-500 blur-xl opacity-20 animate-pulse" />
                 <div className="relative w-16 h-16 bg-gradient-to-br from-green-600 to-green-700 rounded-2xl flex items-center justify-center shadow-lg">
                   <Leaf className="w-8 h-8 text-white" />
                 </div>
@@ -210,6 +273,7 @@ const Login = () => {
             </p>
           </div>
 
+          {/* ── Reset-password mode ─────────────────────────────────────── */}
           {resetMode ? (
             <>
               <h2 className="text-xl font-semibold text-gray-900 mb-2">
@@ -224,7 +288,7 @@ const Login = () => {
                     Email Address
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type="email"
                       value={resetEmail}
@@ -242,8 +306,8 @@ const Login = () => {
                 >
                   {loading ? (
                     <div className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Sending...</span>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Sending…</span>
                     </div>
                   ) : (
                     "Send Reset Link"
@@ -262,7 +326,11 @@ const Login = () => {
               </form>
             </>
           ) : (
+            /* ── Normal login mode ────────────────────────────────────────── */
             <>
+              {/* WebView warning — shown only when needed */}
+              {inWebView && <WebViewBanner />}
+
               <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Email */}
                 <div>
@@ -270,7 +338,7 @@ const Login = () => {
                     Email Address
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type="email"
                       value={email}
@@ -288,7 +356,7 @@ const Login = () => {
                     Password
                   </label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type={showPassword ? "text" : "password"}
                       value={password}
@@ -306,13 +374,12 @@ const Login = () => {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
 
-                  {/* Password validation errors */}
                   {passwordTouched && passwordErrors.length > 0 && (
                     <div className="mt-2 space-y-1">
                       {passwordErrors.map((err) => (
@@ -327,7 +394,6 @@ const Login = () => {
                     </div>
                   )}
 
-                  {/* Password requirements hint (before touching) */}
                   {!passwordTouched && (
                     <p className="text-xs text-gray-400 mt-1.5">
                       Min. 8 characters with uppercase and lowercase letters
@@ -358,7 +424,7 @@ const Login = () => {
                   className="w-full bg-green-600 text-white font-medium py-2 rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {loading ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
                       <LogIn size={18} />
@@ -369,27 +435,47 @@ const Login = () => {
               </form>
 
               <div className="flex items-center justify-center gap-2 my-6">
-                <div className="flex-1 h-px bg-gray-200"></div>
+                <div className="flex-1 h-px bg-gray-200" />
                 <span className="text-xs text-gray-400">Or continue with</span>
-                <div className="flex-1 h-px bg-gray-200"></div>
+                <div className="flex-1 h-px bg-gray-200" />
               </div>
 
-              <button
-                onClick={handleGoogleLogin}
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all duration-300 shadow-sm disabled:opacity-60"
-              >
-                {loading ? (
-                  <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <>
-                    <GoogleIcon />
-                    <span className="text-gray-700 font-medium">
-                      Sign in with Google
-                    </span>
-                  </>
+              {/* Google button — visually disabled + tooltip in WebView */}
+              <div className="relative group">
+                <button
+                  onClick={handleGoogleLogin}
+                  disabled={loading || inWebView}
+                  title={
+                    inWebView
+                      ? "Open in Chrome or Safari to use Google sign-in"
+                      : ""
+                  }
+                  className={`w-full flex items-center justify-center gap-3 py-3 px-4 border rounded-xl transition-all duration-300 shadow-sm
+                    ${
+                      inWebView
+                        ? "bg-gray-50 border-gray-200 opacity-50 cursor-not-allowed"
+                        : "bg-white border-gray-200 hover:bg-gray-50 disabled:opacity-60"
+                    }`}
+                >
+                  {loading && !inWebView ? (
+                    <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <GoogleIcon />
+                      <span className="text-gray-700 font-medium">
+                        Sign in with Google
+                      </span>
+                    </>
+                  )}
+                </button>
+
+                {/* Tooltip for WebView users */}
+                {inWebView && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    Open in Chrome or Safari
+                  </div>
                 )}
-              </button>
+              </div>
 
               <p className="text-center text-gray-600 mt-6">
                 Don't have an account?{" "}

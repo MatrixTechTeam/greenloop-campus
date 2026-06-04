@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.jsx - Cleaned up version
+// src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from "react";
 import {
   signInWithEmailAndPassword,
@@ -19,30 +19,73 @@ const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
 
+// ─── WebView / user-agent helpers ────────────────────────────────────────────
+
+/**
+ * Returns true when the page is running inside a WebView
+ * (Android WebView, iOS WKWebView / UIWebView, Facebook in-app browser,
+ *  Instagram, Twitter, LinkedIn, Snapchat, etc.)
+ * Google blocks OAuth for ALL of these → must open a real browser instead.
+ */
+export const isWebView = () => {
+  const ua = navigator.userAgent || "";
+
+  // Android WebView signature
+  if (/wv/.test(ua) && /Android/.test(ua)) return true;
+
+  // iOS WKWebView / UIWebView – missing "Safari" but has "AppleWebKit"
+  if (
+    /iPhone|iPad|iPod/.test(ua) &&
+    !/Safari/.test(ua) &&
+    /AppleWebKit/.test(ua)
+  )
+    return true;
+
+  // Common in-app browsers
+  if (
+    /FBAN|FBAV|Instagram|Twitter|LinkedIn|Snapchat|TikTok|Line|WhatsApp/.test(
+      ua,
+    )
+  )
+    return true;
+
+  // Generic WebView marker
+  if (/WebView/.test(ua)) return true;
+
+  return false;
+};
+
+/** True when running on any mobile device (regardless of WebView). */
+export const isMobileDevice = () =>
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState("student");
 
-  // Handle redirect result for mobile devices
+  // ── Handle redirect result (fires after Google redirect back to app) ────────
   useEffect(() => {
     const handleRedirectResult = async () => {
       try {
         const result = await getRedirectResult(auth);
         if (result?.user) {
           toast.success(`Welcome, ${result.user.displayName || "Student"}!`);
-          // Small delay to ensure toast is shown
           setTimeout(() => {
             window.location.href = "/dashboard";
           }, 500);
         }
       } catch (error) {
         console.error("Redirect result error:", error);
-        if (
-          error.code !== "auth/popup-closed-by-user" &&
-          error.code !== "auth/redirect-cancelled-by-user"
-        ) {
+        const ignored = [
+          "auth/popup-closed-by-user",
+          "auth/redirect-cancelled-by-user",
+          "auth/null-user",
+        ];
+        if (!ignored.includes(error.code)) {
           toast.error("Google sign-in failed. Please try again.");
         }
       }
@@ -51,7 +94,7 @@ export const AuthProvider = ({ children }) => {
     handleRedirectResult();
   }, []);
 
-  // Auth state listener
+  // ── Auth state listener ────────────────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
@@ -79,10 +122,14 @@ export const AuthProvider = ({ children }) => {
         setUserProfile(null);
         setUserRole("student");
       }
+
       setLoading(false);
     });
+
     return () => unsubscribe();
   }, []);
+
+  // ── Auth methods ───────────────────────────────────────────────────────────
 
   const signup = async (
     email,
@@ -154,31 +201,55 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Smart Google login - uses popup on desktop, redirect on mobile
+  /**
+   * Google sign-in with three-tier strategy:
+   *
+   *  1. WebView detected → cannot use popup OR redirect inside WebView.
+   *     Throw a special error so the UI can show an "Open in browser" prompt.
+   *
+   *  2. Mobile real browser → use redirect (avoids popup blocker issues).
+   *
+   *  3. Desktop → use popup first; fall back to redirect if popup is blocked.
+   */
   const loginWithGoogle = async () => {
-    try {
-      // Detect if user is on mobile device
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    // ── Tier 1: WebView — Google blocks OAuth here entirely ──────────────────
+    if (isWebView()) {
+      const webViewError = new Error(
+        "Google sign-in is not supported inside in-app browsers.\n" +
+          "Please open this page in Chrome or Safari.",
+      );
+      webViewError.code = "auth/webview-blocked";
+      toast.error("Please open in Chrome or Safari to sign in with Google.", {
+        duration: 5000,
+      });
+      throw webViewError;
+    }
 
-      if (isMobile) {
-        // Use redirect for mobile devices (avoids popup blockers and 403 error)
+    // ── Tier 2: Mobile real browser — use redirect ───────────────────────────
+    if (isMobileDevice()) {
+      try {
         await signInWithRedirect(auth, googleProvider);
-        return null; // Will redirect, no need to return user
-      } else {
-        // Use popup for desktop
-        const result = await signInWithPopup(auth, googleProvider);
-        toast.success(`Welcome, ${result.user.displayName || "Student"}!`);
-        return result.user;
+        return null; // Page will reload after redirect
+      } catch (error) {
+        console.error("Mobile redirect error:", error);
+        toast.error("Google sign-in failed. Please try again.");
+        throw error;
       }
-    } catch (error) {
-      console.error("Google login error:", error);
+    }
 
-      // Fallback to redirect if popup fails on desktop
+    // ── Tier 3: Desktop — try popup, fall back to redirect ───────────────────
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      toast.success(`Welcome, ${result.user.displayName || "Student"}!`);
+      return result.user;
+    } catch (error) {
+      console.error("Google popup error:", error);
+
       if (
         error.code === "auth/popup-blocked" ||
         error.code === "auth/popup-closed-by-user"
       ) {
-        toast.info("Redirecting to Google sign-in...");
+        toast("Popup blocked — redirecting to Google sign-in…", { icon: "🔄" });
         await signInWithRedirect(auth, googleProvider);
         return null;
       }

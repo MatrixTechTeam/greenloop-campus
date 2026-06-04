@@ -1,11 +1,6 @@
 // src/config/firebase.js
 import { initializeApp } from "firebase/app";
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signInWithRedirect,
-} from "firebase/auth";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -27,6 +22,8 @@ export const storage = getStorage(app);
 
 // Configure Google Provider
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope("email");
+googleProvider.addScope("profile");
 googleProvider.setCustomParameters({
   prompt: "select_account",
 });
