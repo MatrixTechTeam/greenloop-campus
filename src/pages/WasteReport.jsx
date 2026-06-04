@@ -1,4 +1,4 @@
-// src/pages/WasteReport.jsx - Fully responsive with better fit
+// src/pages/WasteReport.jsx - Add Award to imports
 import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { firebaseService } from "../services/firebaseService";
@@ -17,6 +17,8 @@ import {
   Send,
   Image as ImageIcon,
   ArrowLeft,
+  Award, // Add Award here
+  FileText, // Add FileText here (used in summary)
 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import toast from "react-hot-toast";
