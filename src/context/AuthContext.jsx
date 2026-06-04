@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.jsx
+// src/contexts/AuthContext.jsx - Fixed for both desktop and mobile
 import React, { createContext, useContext, useState, useEffect } from "react";
 import {
   signInWithEmailAndPassword,
@@ -6,6 +6,8 @@ import {
   signOut,
   sendPasswordResetEmail,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   updateProfile,
   onAuthStateChanged,
 } from "firebase/auth";
@@ -22,6 +24,27 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState("student");
+
+  // Handle redirect result for mobile devices
+  useEffect(() => {
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          toast.success(`Welcome, ${result.user.displayName || "Student"}!`);
+          // Force reload to update auth state
+          window.location.href = "/dashboard";
+        }
+      } catch (error) {
+        console.error("Redirect result error:", error);
+        if (error.code !== "auth/popup-closed-by-user") {
+          toast.error("Google sign-in failed. Please try again.");
+        }
+      }
+    };
+
+    handleRedirectResult();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -125,20 +148,36 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Smart Google login - uses popup on desktop, redirect on mobile
   const loginWithGoogle = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      toast.success(`Welcome, ${result.user.displayName || "Student"}!`);
-      return result.user;
+      // Detect if user is on mobile device
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      if (isMobile) {
+        // Use redirect for mobile devices (avoids popup blockers)
+        await signInWithRedirect(auth, googleProvider);
+        return null; // Will redirect, no need to return user
+      } else {
+        // Use popup for desktop
+        const result = await signInWithPopup(auth, googleProvider);
+        toast.success(`Welcome, ${result.user.displayName || "Student"}!`);
+        return result.user;
+      }
     } catch (error) {
       console.error("Google login error:", error);
-      if (error.code === "auth/popup-closed-by-user") {
-        toast.error("Sign-in cancelled. Please try again.");
-      } else if (error.code === "auth/popup-blocked") {
-        toast.error("Popup was blocked. Please allow popups for this site.");
-      } else {
-        toast.error("Google sign-in failed. Please try again.");
+
+      // Fallback to redirect if popup fails on desktop
+      if (
+        error.code === "auth/popup-blocked" ||
+        error.code === "auth/popup-closed-by-user"
+      ) {
+        toast.info("Redirecting to Google sign-in...");
+        await signInWithRedirect(auth, googleProvider);
+        return null;
       }
+
+      toast.error("Google sign-in failed. Please try again.");
       throw error;
     }
   };
