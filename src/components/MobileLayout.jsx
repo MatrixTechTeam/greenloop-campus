@@ -1,4 +1,4 @@
-// src/components/MobileLayout.jsx - Simplified version without modals that cause DOM errors
+// src/components/MobileLayout.jsx - Fixed with working User Details Modal
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -63,6 +63,10 @@ const MobileLayout = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // User details modal state
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [showUserModal, setShowUserModal] = useState(false);
+
   // Leaderboard filters
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [selectedFaculty, setSelectedFaculty] = useState("all");
@@ -71,7 +75,7 @@ const MobileLayout = () => {
   const [departmentsList, setDepartmentsList] = useState(["all"]);
   const [facultiesList, setFacultiesList] = useState(["all"]);
 
-  // Marketplace states - simplified
+  // Marketplace states
   const [showSellModal, setShowSellModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showItemDetails, setShowItemDetails] = useState(false);
@@ -505,6 +509,210 @@ const MobileLayout = () => {
       view: "profile",
     },
   ];
+
+  // User Details Modal Component
+  const UserDetailsModal = () => {
+    if (!selectedUser) return null;
+
+    const rank = leaderboard.findIndex((u) => u.uid === selectedUser.uid) + 1;
+
+    return (
+      <div
+        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        onClick={() => setShowUserModal(false)}
+      >
+        <div
+          className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="sticky top-0 bg-gradient-to-r from-green-600 to-green-700 px-5 py-4 flex justify-between items-center">
+            <h2 className="text-lg font-bold text-white">User Profile</h2>
+            <button
+              onClick={() => setShowUserModal(false)}
+              className="p-1 bg-white/20 rounded-full hover:bg-white/30"
+            >
+              <X size={18} className="text-white" />
+            </button>
+          </div>
+
+          <div className="p-5 space-y-4">
+            {/* Avatar and Basic Info */}
+            <div className="flex items-center gap-4 pb-4 border-b border-green-100">
+              <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-200 rounded-full flex items-center justify-center">
+                <span className="text-2xl font-bold text-green-700">
+                  {selectedUser.fullname?.charAt(0) || "U"}
+                </span>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-gray-900">
+                  {selectedUser.fullname || "Anonymous"}
+                </h3>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
+                    {selectedUser.badge || "Eco Rookie"}
+                  </span>
+                  <span className="text-xs text-gray-400">Rank #{rank}</span>
+                </div>
+                <div className="flex items-center gap-1 mt-1">
+                  <Mail size={12} className="text-gray-400" />
+                  <span className="text-xs text-gray-500">
+                    {selectedUser.email}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Eco Stats */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-green-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-green-600">
+                  {selectedUser.ecoPoints || 0}
+                </p>
+                <p className="text-xs text-gray-500">Eco Points</p>
+              </div>
+              <div className="bg-green-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-green-600">
+                  {rank || "-"}
+                </p>
+                <p className="text-xs text-gray-500">Global Rank</p>
+              </div>
+            </div>
+
+            {/* Academic Information */}
+            <div>
+              <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-2">
+                <GraduationCap size={14} className="text-green-600" />
+                Academic Information
+              </h4>
+              <div className="space-y-2 pl-6">
+                {selectedUser.department && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Briefcase size={14} className="text-gray-400" />
+                    <span className="text-gray-600">Department:</span>
+                    <span className="text-gray-800">
+                      {selectedUser.department}
+                    </span>
+                  </div>
+                )}
+                {selectedUser.faculty && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <BookOpen size={14} className="text-gray-400" />
+                    <span className="text-gray-600">Faculty:</span>
+                    <span className="text-gray-800">
+                      {selectedUser.faculty}
+                    </span>
+                  </div>
+                )}
+                {selectedUser.studentId && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <GraduationCap size={14} className="text-gray-400" />
+                    <span className="text-gray-600">Student ID:</span>
+                    <span className="text-gray-800">
+                      {selectedUser.studentId}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Contact Information */}
+            {(selectedUser.phone || selectedUser.location) && (
+              <div>
+                <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-2">
+                  <Phone size={14} className="text-green-600" />
+                  Contact Information
+                </h4>
+                <div className="space-y-2 pl-6">
+                  {selectedUser.phone && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Phone size={14} className="text-gray-400" />
+                      <span className="text-gray-600">Phone:</span>
+                      <span className="text-gray-800">
+                        {selectedUser.phone}
+                      </span>
+                    </div>
+                  )}
+                  {selectedUser.location && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin size={14} className="text-gray-400" />
+                      <span className="text-gray-600">Location:</span>
+                      <span className="text-gray-800">
+                        {selectedUser.location}
+                      </span>
+                    </div>
+                  )}
+                  {selectedUser.website && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Globe size={14} className="text-gray-400" />
+                      <span className="text-gray-600">Website:</span>
+                      <a
+                        href={selectedUser.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-green-600 hover:underline truncate"
+                      >
+                        {selectedUser.website.replace(/^https?:\/\//, "")}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Bio */}
+            {selectedUser.bio && (
+              <div>
+                <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-2">
+                  <Globe size={14} className="text-green-600" />
+                  About
+                </h4>
+                <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                  {selectedUser.bio}
+                </p>
+              </div>
+            )}
+
+            {/* Interests */}
+            {selectedUser.interests && selectedUser.interests.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-gray-900 text-sm mb-2">
+                  Interests
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {selectedUser.interests.map((interest, idx) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-1 bg-green-50 text-green-700 rounded-full text-xs"
+                    >
+                      {interest}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Member Since */}
+            {selectedUser.createdAt && (
+              <div className="pt-2 text-center text-xs text-gray-400 border-t border-green-100">
+                Member since{" "}
+                {new Date(selectedUser.createdAt).toLocaleDateString("en-US", {
+                  month: "long",
+                  year: "numeric",
+                })}
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowUserModal(false)}
+              className="w-full mt-2 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderDashboard = () => (
     <div className="space-y-5 pb-20">
@@ -980,7 +1188,11 @@ const MobileLayout = () => {
               return (
                 <div
                   key={user.uid}
-                  className={`px-4 py-3 flex items-center gap-3 ${isCurrentUser ? "bg-green-50" : "hover:bg-green-50/30"} transition-colors`}
+                  onClick={() => {
+                    setSelectedUser(user);
+                    setShowUserModal(true);
+                  }}
+                  className={`px-4 py-3 flex items-center gap-3 cursor-pointer ${isCurrentUser ? "bg-green-50" : "hover:bg-green-50/30"} transition-colors`}
                 >
                   <div className="flex items-center gap-2 w-12">
                     {getRankIcon(rank)}
@@ -1340,7 +1552,7 @@ const MobileLayout = () => {
         }}
       />
 
-      {/* Modals - Simplified to avoid DOM errors */}
+      {/* Sell Modal */}
       {showSellModal && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
@@ -1360,6 +1572,7 @@ const MobileLayout = () => {
               </button>
             </div>
             <form onSubmit={handleCreateListing} className="p-6 space-y-4">
+              {/* Form fields - same as before */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Exchange Type *
@@ -1557,6 +1770,7 @@ const MobileLayout = () => {
         </div>
       )}
 
+      {/* Item Details Modal */}
       {showItemDetails && selectedItem && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
@@ -1637,6 +1851,9 @@ const MobileLayout = () => {
           </div>
         </div>
       )}
+
+      {/* User Details Modal */}
+      {showUserModal && <UserDetailsModal />}
     </div>
   );
 };

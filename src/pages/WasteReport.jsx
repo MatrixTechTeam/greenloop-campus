@@ -1,4 +1,4 @@
-// src/pages/WasteReport.jsx - Add Award to imports
+// src/pages/WasteReport.jsx - Without react-hot-toast dependency
 import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { firebaseService } from "../services/firebaseService";
@@ -17,11 +17,29 @@ import {
   Send,
   Image as ImageIcon,
   ArrowLeft,
-  Award, // Add Award here
-  FileText, // Add FileText here (used in summary)
+  Award,
+  FileText,
 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
-import toast from "react-hot-toast";
+
+// Simple notification function (replace toast)
+const showMessage = (message, type = "success") => {
+  // Create a temporary div for notification
+  const toastDiv = document.createElement("div");
+  toastDiv.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-white text-sm font-medium shadow-lg transition-all duration-300 ${
+    type === "success"
+      ? "bg-green-500"
+      : type === "error"
+        ? "bg-red-500"
+        : "bg-blue-500"
+  }`;
+  toastDiv.innerText = message;
+  document.body.appendChild(toastDiv);
+  setTimeout(() => {
+    toastDiv.style.opacity = "0";
+    setTimeout(() => toastDiv.remove(), 300);
+  }, 3000);
+};
 
 const WasteReport = () => {
   const { currentUser, userProfile } = useAuth();
@@ -144,7 +162,7 @@ const WasteReport = () => {
   const getCurrentLocation = () => {
     setLocationLoading(true);
     if (!navigator.geolocation) {
-      toast.error("Geolocation not supported");
+      showMessage("Geolocation not supported", "error");
       setLocationLoading(false);
       return;
     }
@@ -156,11 +174,11 @@ const WasteReport = () => {
           lng: position.coords.longitude,
         });
         setLocationLoading(false);
-        toast.success("Location detected");
+        showMessage("Location detected", "success");
       },
       (error) => {
         console.error("Location error:", error);
-        toast.error("Could not get location. Please enable GPS.");
+        showMessage("Could not get location. Please enable GPS.", "error");
         setLocationLoading(false);
       },
     );
@@ -170,7 +188,7 @@ const WasteReport = () => {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image must be less than 5MB");
+        showMessage("Image must be less than 5MB", "error");
         return;
       }
       setImageFile(file);
@@ -193,7 +211,7 @@ const WasteReport = () => {
       setShowCamera(true);
     } catch (error) {
       console.error("Camera error:", error);
-      toast.error("Could not access camera");
+      showMessage("Could not access camera", "error");
     }
   };
 
@@ -242,17 +260,17 @@ const WasteReport = () => {
     e.preventDefault();
 
     if (!formData.wasteType) {
-      toast.error("Please select waste type");
+      showMessage("Please select waste type", "error");
       return;
     }
 
     if (!formData.description) {
-      toast.error("Please provide a description");
+      showMessage("Please provide a description", "error");
       return;
     }
 
     if (!location) {
-      toast.error("Please enable location services");
+      showMessage("Please enable location services", "error");
       return;
     }
 
@@ -280,11 +298,11 @@ const WasteReport = () => {
       await firebaseService.createWasteReport(reportData, imageFile);
       await firebaseService.updateUserPoints(currentUser.uid, pointsEarned);
 
-      toast.success(`Report submitted! +${pointsEarned} Eco Points`);
+      showMessage(`Report submitted! +${pointsEarned} Eco Points`, "success");
       navigate("/dashboard");
     } catch (error) {
       console.error("Error submitting report:", error);
-      toast.error("Failed to submit report");
+      showMessage("Failed to submit report", "error");
     } finally {
       setLoading(false);
     }
