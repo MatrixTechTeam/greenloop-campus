@@ -1,10 +1,11 @@
-// src/components/MobileLayout.jsx - Full fixed code with Report Waste navigation
+// src/components/MobileLayout.jsx - Simplified version without modals that cause DOM errors
 import React, { useState, useEffect, useRef } from "react";
-import { Outlet, Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { firebaseService } from "../services/firebaseService";
 import AIWasteScanner from "./AIWasteScanner";
 import MobileProfile from "../pages/MobileProfile";
+import AdminPanel from "../pages/AdminPanel";
 import {
   Menu,
   X,
@@ -44,11 +45,7 @@ import {
   GraduationCap,
   Globe,
   BookOpen,
-  FileText,
-  AlertTriangle,
-  Eye,
   Flag,
-  Zap,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
@@ -66,10 +63,6 @@ const MobileLayout = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // User details modal state
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [showUserModal, setShowUserModal] = useState(false);
-
   // Leaderboard filters
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [selectedFaculty, setSelectedFaculty] = useState("all");
@@ -78,7 +71,7 @@ const MobileLayout = () => {
   const [departmentsList, setDepartmentsList] = useState(["all"]);
   const [facultiesList, setFacultiesList] = useState(["all"]);
 
-  // Marketplace states
+  // Marketplace states - simplified
   const [showSellModal, setShowSellModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showItemDetails, setShowItemDetails] = useState(false);
@@ -134,62 +127,7 @@ const MobileLayout = () => {
     },
   ];
 
-  // Update departments and faculties when leaderboard data changes
-  useEffect(() => {
-    if (leaderboard.length > 0) {
-      const departments = [
-        "all",
-        ...new Set(leaderboard.map((u) => u.department).filter(Boolean)),
-      ];
-      const faculties = [
-        "all",
-        ...new Set(leaderboard.map((u) => u.faculty).filter(Boolean)),
-      ];
-      setDepartmentsList(departments);
-      setFacultiesList(faculties);
-    }
-  }, [leaderboard]);
-
-  // Filtered and sorted leaderboard
-  const filteredLeaderboard = leaderboard
-    .filter((user) => {
-      const matchesSearch =
-        leaderboardSearch === "" ||
-        user.fullname
-          ?.toLowerCase()
-          .includes(leaderboardSearch.toLowerCase()) ||
-        user.email?.toLowerCase().includes(leaderboardSearch.toLowerCase()) ||
-        user.department
-          ?.toLowerCase()
-          .includes(leaderboardSearch.toLowerCase());
-      const matchesDepartment =
-        selectedDepartment === "all" || user.department === selectedDepartment;
-      const matchesFaculty =
-        selectedFaculty === "all" || user.faculty === selectedFaculty;
-      return matchesSearch && matchesDepartment && matchesFaculty;
-    })
-    .sort((a, b) => {
-      if (sortBy === "points") return (b.ecoPoints || 0) - (a.ecoPoints || 0);
-      if (sortBy === "name")
-        return (a.fullname || "").localeCompare(b.fullname || "");
-      return 0;
-    });
-
-  // Close notification dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        notificationRef.current &&
-        !notificationRef.current.contains(event.target)
-      ) {
-        setShowNotifications(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Fetch notifications
+  // Fetch data
   useEffect(() => {
     if (!currentUser) return;
 
@@ -198,31 +136,22 @@ const MobileLayout = () => {
         const notifs = await firebaseService.getUserNotifications(
           currentUser.uid,
         );
-        setNotifications(notifs);
-        setUnreadCount(notifs.filter((n) => !n.read).length);
+        setNotifications(notifs || []);
+        setUnreadCount(notifs?.filter((n) => !n.read).length || 0);
       } catch (error) {
         console.error("Error fetching notifications:", error);
       }
     };
 
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, [currentUser]);
-
-  // Fetch all data
-  useEffect(() => {
     fetchAllData();
-  }, [currentUser]);
 
-  // Set up polling for real-time updates
-  useEffect(() => {
-    if (!currentUser) return;
     const interval = setInterval(() => {
       fetchMarketplaceListings();
       fetchUpcomingEvents();
       fetchLeaderboardData();
     }, 10000);
+
     return () => clearInterval(interval);
   }, [currentUser]);
 
@@ -238,6 +167,22 @@ const MobileLayout = () => {
       document.body.style.overflow = "unset";
     };
   }, [sidebarOpen]);
+
+  // Update departments and faculties when leaderboard data changes
+  useEffect(() => {
+    if (leaderboard.length > 0) {
+      const departments = [
+        "all",
+        ...new Set(leaderboard.map((u) => u.department).filter(Boolean)),
+      ];
+      const faculties = [
+        "all",
+        ...new Set(leaderboard.map((u) => u.faculty).filter(Boolean)),
+      ];
+      setDepartmentsList(departments);
+      setFacultiesList(faculties);
+    }
+  }, [leaderboard]);
 
   const fetchAllData = async () => {
     if (!currentUser) return;
@@ -292,35 +237,29 @@ const MobileLayout = () => {
     }
   };
 
-  // Real-time event joining
   const handleJoinEvent = async (eventId) => {
     if (!currentUser) {
       toast.error("Please login to join events");
       return;
     }
-
     setJoiningEventId(eventId);
     try {
       await firebaseService.joinEvent(eventId, currentUser.uid);
       toast.success("Successfully joined the event! +25 Eco Points");
       await fetchUpcomingEvents();
     } catch (error) {
-      console.error("Error joining event:", error);
       toast.error(error.message || "Failed to join event");
     } finally {
       setJoiningEventId(null);
     }
   };
 
-  // Create marketplace listing
   const handleCreateListing = async (e) => {
     e.preventDefault();
-
     if (!formData.title || !formData.description || !formData.category) {
       toast.error("Please fill in all required fields");
       return;
     }
-
     setSellingItem(true);
     try {
       const listingData = {
@@ -336,33 +275,27 @@ const MobileLayout = () => {
         status: "available",
         createdAt: new Date(),
       };
-
       await firebaseService.createMarketplaceListing(listingData, imageFile);
       toast.success("Item listed successfully!");
-
       resetMarketplaceForm();
       setShowSellModal(false);
       await fetchMarketplaceListings();
     } catch (error) {
-      console.error("Error creating listing:", error);
       toast.error("Failed to list item: " + error.message);
     } finally {
       setSellingItem(false);
     }
   };
 
-  // Claim/Exchange item
   const handleClaimItem = async (listing) => {
     if (!currentUser) {
       toast.error("Please login to claim items");
       return;
     }
-
     if (currentUser.uid === listing.ownerId) {
       toast.error("You can't claim your own item");
       return;
     }
-
     try {
       await firebaseService.claimListing(listing.id, currentUser.uid);
       const message =
@@ -374,16 +307,13 @@ const MobileLayout = () => {
       setShowItemDetails(false);
       setSelectedItem(null);
     } catch (error) {
-      console.error("Error claiming item:", error);
       toast.error(error.message || "Failed to claim item");
     }
   };
 
-  // Delete listing
   const handleDeleteListing = async (listingId) => {
     if (!window.confirm("Are you sure you want to delete this listing?"))
       return;
-
     try {
       await firebaseService.deleteListing(listingId);
       toast.success("Listing deleted successfully");
@@ -391,7 +321,6 @@ const MobileLayout = () => {
       setShowItemDetails(false);
       setSelectedItem(null);
     } catch (error) {
-      console.error("Error deleting listing:", error);
       toast.error("Failed to delete listing");
     }
   };
@@ -426,7 +355,6 @@ const MobileLayout = () => {
     }
   };
 
-  // Logout goes to landing page
   const handleLogout = async () => {
     await logout();
     toast.success("Logged out successfully");
@@ -452,7 +380,6 @@ const MobileLayout = () => {
       setUnreadCount(0);
       toast.success("All notifications marked as read");
     } catch (error) {
-      console.error("Error marking all notifications read:", error);
       toast.error("Failed to mark notifications as read");
     }
   };
@@ -462,45 +389,27 @@ const MobileLayout = () => {
     setShowNotifications(!showNotifications);
   };
 
-  // Navigation paths
-  const navItems = [
-    { path: "/dashboard", icon: Home, label: "Home" },
-    { path: "/dashboard/marketplace", icon: Store, label: "Marketplace" },
-    { path: "/dashboard/leaderboard", icon: Trophy, label: "Leaderboard" },
-    { path: "/dashboard/events", icon: Calendar, label: "Events" },
-    { path: "/dashboard/profile", icon: User, label: "Profile" },
-  ];
-  if (userProfile?.role === "admin")
-    navItems.push({ path: "/dashboard/admin", icon: Shield, label: "Admin" });
-
-  // Bottom navigation paths
-  const bottomNavItems = [
-    { path: "/dashboard", icon: Home, label: "Home", view: "dashboard" },
-    {
-      path: "/dashboard/marketplace",
-      icon: Store,
-      label: "Market",
-      view: "marketplace",
-    },
-    {
-      path: "/dashboard/leaderboard",
-      icon: Trophy,
-      label: "Rank",
-      view: "leaderboard",
-    },
-    {
-      path: "/dashboard/events",
-      icon: Calendar,
-      label: "Events",
-      view: "events",
-    },
-    {
-      path: "/dashboard/profile",
-      icon: User,
-      label: "Profile",
-      view: "profile",
-    },
-  ];
+  // Filtered leaderboard
+  const filteredLeaderboard = leaderboard
+    .filter((user) => {
+      const matchesSearch =
+        leaderboardSearch === "" ||
+        user.fullname
+          ?.toLowerCase()
+          .includes(leaderboardSearch.toLowerCase()) ||
+        user.email?.toLowerCase().includes(leaderboardSearch.toLowerCase());
+      const matchesDepartment =
+        selectedDepartment === "all" || user.department === selectedDepartment;
+      const matchesFaculty =
+        selectedFaculty === "all" || user.faculty === selectedFaculty;
+      return matchesSearch && matchesDepartment && matchesFaculty;
+    })
+    .sort((a, b) => {
+      if (sortBy === "points") return (b.ecoPoints || 0) - (a.ecoPoints || 0);
+      if (sortBy === "name")
+        return (a.fullname || "").localeCompare(b.fullname || "");
+      return 0;
+    });
 
   const filteredListings = listings.filter((item) => {
     const matchesSearch =
@@ -558,202 +467,44 @@ const MobileLayout = () => {
     return null;
   };
 
-  // User Details Modal Component
-  const UserDetailsModal = () => {
-    if (!selectedUser) return null;
+  // Navigation items
+  const navItems = [
+    { path: "/dashboard", icon: Home, label: "Home" },
+    { path: "/dashboard/marketplace", icon: Store, label: "Marketplace" },
+    { path: "/dashboard/leaderboard", icon: Trophy, label: "Leaderboard" },
+    { path: "/dashboard/events", icon: Calendar, label: "Events" },
+    { path: "/dashboard/profile", icon: User, label: "Profile" },
+  ];
+  if (userProfile?.role === "admin")
+    navItems.push({ path: "/dashboard/admin", icon: Shield, label: "Admin" });
 
-    const rank = leaderboard.findIndex((u) => u.uid === selectedUser.uid) + 1;
-
-    return (
-      <div
-        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-        onClick={() => setShowUserModal(false)}
-      >
-        <div
-          className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="sticky top-0 bg-gradient-to-r from-green-600 to-green-700 px-5 py-4 flex justify-between items-center">
-            <h2 className="text-lg font-bold text-white">User Profile</h2>
-            <button
-              onClick={() => setShowUserModal(false)}
-              className="p-1 bg-white/20 rounded-full hover:bg-white/30"
-            >
-              <X size={18} className="text-white" />
-            </button>
-          </div>
-
-          <div className="p-5 space-y-4">
-            <div className="flex items-center gap-4 pb-4 border-b border-green-100">
-              <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-200 rounded-full flex items-center justify-center">
-                <span className="text-2xl font-bold text-green-700">
-                  {selectedUser.fullname?.charAt(0) || "U"}
-                </span>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-gray-900">
-                  {selectedUser.fullname || "Anonymous"}
-                </h3>
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
-                    {selectedUser.badge || "Eco Rookie"}
-                  </span>
-                  <span className="text-xs text-gray-400">Rank #{rank}</span>
-                </div>
-                <div className="flex items-center gap-1 mt-1">
-                  <Mail size={12} className="text-gray-400" />
-                  <span className="text-xs text-gray-500">
-                    {selectedUser.email}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-green-50 rounded-lg p-3 text-center">
-                <p className="text-2xl font-bold text-green-600">
-                  {selectedUser.ecoPoints || 0}
-                </p>
-                <p className="text-xs text-gray-500">Eco Points</p>
-              </div>
-              <div className="bg-green-50 rounded-lg p-3 text-center">
-                <p className="text-2xl font-bold text-green-600">
-                  {rank || "-"}
-                </p>
-                <p className="text-xs text-gray-500">Global Rank</p>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-2">
-                <GraduationCap size={14} className="text-green-600" />
-                Academic Information
-              </h4>
-              <div className="space-y-2 pl-6">
-                {selectedUser.department && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Briefcase size={14} className="text-gray-400" />
-                    <span className="text-gray-600">Department:</span>
-                    <span className="text-gray-800">
-                      {selectedUser.department}
-                    </span>
-                  </div>
-                )}
-                {selectedUser.faculty && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <BookOpen size={14} className="text-gray-400" />
-                    <span className="text-gray-600">Faculty:</span>
-                    <span className="text-gray-800">
-                      {selectedUser.faculty}
-                    </span>
-                  </div>
-                )}
-                {selectedUser.studentId && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <GraduationCap size={14} className="text-gray-400" />
-                    <span className="text-gray-600">Student ID:</span>
-                    <span className="text-gray-800">
-                      {selectedUser.studentId}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {(selectedUser.phone || selectedUser.location) && (
-              <div>
-                <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-2">
-                  <Phone size={14} className="text-green-600" />
-                  Contact Information
-                </h4>
-                <div className="space-y-2 pl-6">
-                  {selectedUser.phone && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Phone size={14} className="text-gray-400" />
-                      <span className="text-gray-600">Phone:</span>
-                      <span className="text-gray-800">
-                        {selectedUser.phone}
-                      </span>
-                    </div>
-                  )}
-                  {selectedUser.location && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <MapPin size={14} className="text-gray-400" />
-                      <span className="text-gray-600">Location:</span>
-                      <span className="text-gray-800">
-                        {selectedUser.location}
-                      </span>
-                    </div>
-                  )}
-                  {selectedUser.website && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Globe size={14} className="text-gray-400" />
-                      <span className="text-gray-600">Website:</span>
-                      <a
-                        href={selectedUser.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-green-600 hover:underline truncate"
-                      >
-                        {selectedUser.website.replace(/^https?:\/\//, "")}
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {selectedUser.bio && (
-              <div>
-                <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-2">
-                  <Globe size={14} className="text-green-600" />
-                  About
-                </h4>
-                <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                  {selectedUser.bio}
-                </p>
-              </div>
-            )}
-
-            {selectedUser.interests && selectedUser.interests.length > 0 && (
-              <div>
-                <h4 className="font-semibold text-gray-900 text-sm mb-2">
-                  Interests
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {selectedUser.interests.map((interest, idx) => (
-                    <span
-                      key={idx}
-                      className="px-2 py-1 bg-green-50 text-green-700 rounded-full text-xs"
-                    >
-                      {interest}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {selectedUser.createdAt && (
-              <div className="pt-2 text-center text-xs text-gray-400 border-t border-green-100">
-                Member since{" "}
-                {new Date(selectedUser.createdAt).toLocaleDateString("en-US", {
-                  month: "long",
-                  year: "numeric",
-                })}
-              </div>
-            )}
-
-            <button
-              onClick={() => setShowUserModal(false)}
-              className="w-full mt-2 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const bottomNavItems = [
+    { path: "/dashboard", icon: Home, label: "Home", view: "dashboard" },
+    {
+      path: "/dashboard/marketplace",
+      icon: Store,
+      label: "Market",
+      view: "marketplace",
+    },
+    {
+      path: "/dashboard/leaderboard",
+      icon: Trophy,
+      label: "Rank",
+      view: "leaderboard",
+    },
+    {
+      path: "/dashboard/events",
+      icon: Calendar,
+      label: "Events",
+      view: "events",
+    },
+    {
+      path: "/dashboard/profile",
+      icon: User,
+      label: "Profile",
+      view: "profile",
+    },
+  ];
 
   const renderDashboard = () => (
     <div className="space-y-5 pb-20">
@@ -800,7 +551,7 @@ const MobileLayout = () => {
         ))}
       </div>
 
-      {/* Quick Actions - FIXED with Report Waste navigation */}
+      {/* Quick Actions */}
       <div className="overflow-x-auto pb-2 -mx-1 px-1">
         <div className="flex gap-3 min-w-max">
           <button
@@ -810,8 +561,6 @@ const MobileLayout = () => {
             <Sparkles size={22} className="text-white" />
             <span className="text-xs font-medium text-white">AI Scan</span>
           </button>
-
-          {/* Report Waste - Navigate to standalone page */}
           <Link
             to="/waste-report"
             className="flex flex-col items-center gap-2 p-3 min-w-[80px] bg-gradient-to-r from-red-600 to-red-500 rounded-xl active:scale-95 shadow-sm"
@@ -819,7 +568,6 @@ const MobileLayout = () => {
             <Flag size={22} className="text-white" />
             <span className="text-xs font-medium text-white">Report Waste</span>
           </Link>
-
           <Link
             to="/dashboard/marketplace"
             className="flex flex-col items-center gap-2 p-3 min-w-[80px] bg-white rounded-xl shadow-sm border border-green-200 active:scale-95"
@@ -1015,7 +763,7 @@ const MobileLayout = () => {
           placeholder="Search items..."
           value={marketplaceSearch}
           onChange={(e) => setMarketplaceSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-3 bg-white rounded-xl border border-green-200 text-sm focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
+          className="w-full pl-9 pr-3 py-3 bg-white rounded-xl border border-green-200 text-sm focus:outline-none focus:border-green-400"
         />
       </div>
 
@@ -1077,13 +825,7 @@ const MobileLayout = () => {
               </p>
               <div className="flex items-center justify-between mt-2">
                 <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full capitalize ${
-                    item.condition === "excellent"
-                      ? "bg-green-100 text-green-700"
-                      : item.condition === "good"
-                        ? "bg-green-50 text-green-600"
-                        : "bg-gray-100 text-gray-600"
-                  }`}
+                  className={`text-[10px] px-2 py-0.5 rounded-full capitalize ${item.condition === "excellent" ? "bg-green-100 text-green-700" : item.condition === "good" ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-600"}`}
                 >
                   {item.condition}
                 </span>
@@ -1144,16 +886,15 @@ const MobileLayout = () => {
                 <select
                   value={selectedDepartment}
                   onChange={(e) => setSelectedDepartment(e.target.value)}
-                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm focus:outline-none focus:border-green-400"
+                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm"
                 >
                   {departmentsList.map((dept) => (
                     <option key={dept} value={dept}>
-                      {dept === "all" ? "📁 All Departments" : dept}
+                      {dept === "all" ? "All Departments" : dept}
                     </option>
                   ))}
                 </select>
               </div>
-
               <div>
                 <label className="text-xs font-medium text-gray-700 mb-1 block">
                   Filter by Faculty
@@ -1161,16 +902,15 @@ const MobileLayout = () => {
                 <select
                   value={selectedFaculty}
                   onChange={(e) => setSelectedFaculty(e.target.value)}
-                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm focus:outline-none focus:border-green-400"
+                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm"
                 >
                   {facultiesList.map((fac) => (
                     <option key={fac} value={fac}>
-                      {fac === "all" ? "🏛️ All Faculties" : fac}
+                      {fac === "all" ? "All Faculties" : fac}
                     </option>
                   ))}
                 </select>
               </div>
-
               <div>
                 <label className="text-xs font-medium text-gray-700 mb-1 block">
                   Sort By
@@ -1178,19 +918,18 @@ const MobileLayout = () => {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSortBy("points")}
-                    className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${sortBy === "points" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"}`}
+                    className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium ${sortBy === "points" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"}`}
                   >
                     ⭐ Points
                   </button>
                   <button
                     onClick={() => setSortBy("name")}
-                    className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${sortBy === "name" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"}`}
+                    className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium ${sortBy === "name" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"}`}
                   >
                     🔤 Name
                   </button>
                 </div>
               </div>
-
               <button
                 onClick={() => {
                   setSelectedDepartment("all");
@@ -1198,9 +937,9 @@ const MobileLayout = () => {
                   setLeaderboardSearch("");
                   setSortBy("points");
                 }}
-                className="w-full py-2 text-xs text-green-600 font-medium hover:text-green-700 border-t border-green-100 mt-2 pt-2"
+                className="w-full py-2 text-xs text-green-600 font-medium border-t border-green-100 mt-2 pt-2"
               >
-                Reset All Filters
+                Reset Filters
               </button>
             </div>
           </motion.div>
@@ -1214,10 +953,10 @@ const MobileLayout = () => {
         />
         <input
           type="text"
-          placeholder="Search by name, email, or department..."
+          placeholder="Search users..."
           value={leaderboardSearch}
           onChange={(e) => setLeaderboardSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-3 bg-white rounded-xl border border-green-200 text-sm focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
+          className="w-full pl-9 pr-3 py-3 bg-white rounded-xl border border-green-200 text-sm focus:outline-none focus:border-green-400"
         />
       </div>
 
@@ -1225,20 +964,6 @@ const MobileLayout = () => {
         <span>
           Showing {filteredLeaderboard.length} of {leaderboard.length} users
         </span>
-        {(selectedDepartment !== "all" ||
-          selectedFaculty !== "all" ||
-          leaderboardSearch) && (
-          <button
-            onClick={() => {
-              setSelectedDepartment("all");
-              setSelectedFaculty("all");
-              setLeaderboardSearch("");
-            }}
-            className="text-green-600"
-          >
-            Clear filters
-          </button>
-        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-green-100 overflow-hidden">
@@ -1247,30 +972,15 @@ const MobileLayout = () => {
             <div className="p-12 text-center">
               <Trophy size={48} className="mx-auto text-gray-300 mb-3" />
               <p className="text-gray-500">No users found</p>
-              <button
-                onClick={() => {
-                  setSelectedDepartment("all");
-                  setSelectedFaculty("all");
-                  setLeaderboardSearch("");
-                }}
-                className="mt-2 text-sm text-green-600"
-              >
-                Clear filters
-              </button>
             </div>
           ) : (
             filteredLeaderboard.map((user, idx) => {
               const rank = idx + 1;
               const isCurrentUser = user.uid === currentUser?.uid;
-
               return (
                 <div
                   key={user.uid}
-                  onClick={() => {
-                    setSelectedUser(user);
-                    setShowUserModal(true);
-                  }}
-                  className={`px-4 py-3 flex items-center gap-3 ${isCurrentUser ? "bg-green-50" : "hover:bg-green-50/30"} transition-colors cursor-pointer`}
+                  className={`px-4 py-3 flex items-center gap-3 ${isCurrentUser ? "bg-green-50" : "hover:bg-green-50/30"} transition-colors`}
                 >
                   <div className="flex items-center gap-2 w-12">
                     {getRankIcon(rank)}
@@ -1391,15 +1101,17 @@ const MobileLayout = () => {
     if (path === "/dashboard/leaderboard") return renderLeaderboard();
     if (path === "/dashboard/events") return renderEvents();
     if (path === "/dashboard/profile") return <MobileProfile />;
+    if (path === "/dashboard/admin") return <AdminPanel />;
     return renderDashboard();
   };
 
-  if (loading)
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="spinner"></div>
+      <div className="min-h-screen flex items-center justify-center bg-green-50">
+        <div className="w-10 h-10 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
       </div>
     );
+  }
 
   return (
     <div className="min-h-screen bg-green-50">
@@ -1442,7 +1154,7 @@ const MobileLayout = () => {
                     {notifications.filter((n) => !n.read).length > 0 && (
                       <button
                         onClick={markAllNotificationsRead}
-                        className="text-xs text-green-600 hover:text-green-700"
+                        className="text-xs text-green-600"
                       >
                         Mark all read
                       </button>
@@ -1469,28 +1181,12 @@ const MobileLayout = () => {
                           }}
                           className={`px-4 py-3 cursor-pointer hover:bg-green-50 ${!notif.read ? "bg-green-50" : ""}`}
                         >
-                          <div className="flex items-start gap-3">
-                            {!notif.read && (
-                              <div className="w-2 h-2 mt-2 rounded-full bg-green-500 flex-shrink-0" />
-                            )}
-                            <div
-                              className={`flex-1 ${!notif.read ? "" : "pl-5"}`}
-                            >
-                              <p className="text-sm font-medium text-gray-900">
-                                {notif.title}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                {notif.message}
-                              </p>
-                              <p className="text-[10px] text-gray-400 mt-1">
-                                {notif.createdAt
-                                  ? new Date(
-                                      notif.createdAt,
-                                    ).toLocaleDateString()
-                                  : "Recent"}
-                              </p>
-                            </div>
-                          </div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {notif.title}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {notif.message}
+                          </p>
                         </div>
                       ))
                     )}
@@ -1644,8 +1340,303 @@ const MobileLayout = () => {
         }}
       />
 
-      {/* User Details Modal */}
-      {showUserModal && <UserDetailsModal />}
+      {/* Modals - Simplified to avoid DOM errors */}
+      {showSellModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowSellModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-green-100 sticky top-0 bg-white flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-900">List an Item</h2>
+              <button
+                onClick={() => setShowSellModal(false)}
+                className="p-1 hover:bg-green-50 rounded-lg"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateListing} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Exchange Type *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, exchangeType: "exchange" })
+                    }
+                    className={`p-3 rounded-xl border-2 transition-all ${formData.exchangeType === "exchange" ? "border-green-600 bg-green-50 text-green-700" : "border-gray-200 text-gray-600"}`}
+                  >
+                    <Recycle size={18} className="mx-auto mb-1" /> Exchange
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, exchangeType: "sell" })
+                    }
+                    className={`p-3 rounded-xl border-2 transition-all ${formData.exchangeType === "sell" ? "border-green-600 bg-green-50 text-green-700" : "border-gray-200 text-gray-600"}`}
+                  >
+                    <Gift size={18} className="mx-auto mb-1" /> Sell
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Title *
+                </label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl"
+                  placeholder="e.g., Plastic Bottles Collection"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Description *
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl resize-none"
+                  rows="3"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Category *
+                  </label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) =>
+                      setFormData({ ...formData, category: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl"
+                    required
+                  >
+                    <option value="">Select</option>
+                    {categories
+                      .filter((c) => c !== "all")
+                      .map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Condition
+                  </label>
+                  <select
+                    value={formData.condition}
+                    onChange={(e) =>
+                      setFormData({ ...formData, condition: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl"
+                  >
+                    {conditions.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Points Value
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.ecoValue}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        ecoValue: parseInt(e.target.value),
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl"
+                    min="1"
+                    max="100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) =>
+                      setFormData({ ...formData, location: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl"
+                    placeholder="e.g., Library, Cafeteria"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Upload Image
+                </label>
+                <div className="flex justify-center px-6 pt-5 pb-6 border-2 border-green-200 border-dashed rounded-xl bg-green-50/30">
+                  {imagePreview ? (
+                    <div className="relative">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="h-32 w-auto rounded-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImagePreview(null);
+                          setImageFile(null);
+                        }}
+                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <Package className="mx-auto h-12 w-12 text-green-400" />
+                      <label className="cursor-pointer text-sm font-medium text-green-600 hover:text-green-700">
+                        <span>Upload a file</span>
+                        <input
+                          type="file"
+                          className="sr-only"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                        />
+                      </label>
+                      <p className="text-xs text-gray-500 mt-1">
+                        PNG, JPG up to 5MB
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowSellModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={sellingItem}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-xl font-medium disabled:opacity-50"
+                >
+                  {sellingItem ? (
+                    <Loader2 size={16} className="animate-spin mx-auto" />
+                  ) : (
+                    "List Item"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showItemDetails && selectedItem && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowItemDetails(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {selectedItem.imageUrl ? (
+              <img
+                src={selectedItem.imageUrl}
+                alt={selectedItem.title}
+                className="w-full h-48 object-cover rounded-t-2xl"
+              />
+            ) : (
+              <div className="w-full h-48 bg-green-50 flex items-center justify-center rounded-t-2xl">
+                <Package size={48} className="text-green-300" />
+              </div>
+            )}
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {selectedItem.title}
+                  </h2>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${conditions.find((c) => c.value === selectedItem.condition)?.color || "bg-gray-100 text-gray-600"}`}
+                    >
+                      {selectedItem.condition}
+                    </span>
+                    <span className="text-xs text-gray-500 capitalize">
+                      {selectedItem.category}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-green-600">
+                    +{selectedItem.ecoValue} pts
+                  </span>
+                </div>
+              </div>
+              <p className="text-gray-600 mb-4">{selectedItem.description}</p>
+              <div className="space-y-2 mb-6 p-4 bg-green-50 rounded-xl text-sm text-gray-700">
+                <div className="flex items-center gap-2">
+                  <User size={14} />
+                  <span>Listed by: {selectedItem.ownerName || "Student"}</span>
+                </div>
+                {selectedItem.location && (
+                  <div className="flex items-center gap-2">
+                    <MapPin size={14} />
+                    <span>{selectedItem.location}</span>
+                  </div>
+                )}
+              </div>
+              {selectedItem.status === "available" &&
+                currentUser?.uid !== selectedItem.ownerId && (
+                  <button
+                    onClick={() => handleClaimItem(selectedItem)}
+                    className="w-full py-3 mb-3 bg-green-600 text-white rounded-xl font-medium flex items-center justify-center gap-2"
+                  >
+                    <Send size={16} />{" "}
+                    {selectedItem.exchangeType === "sell"
+                      ? "Purchase Item"
+                      : "Claim Item"}
+                  </button>
+                )}
+              {currentUser?.uid === selectedItem.ownerId && (
+                <button
+                  onClick={() => handleDeleteListing(selectedItem.id)}
+                  className="w-full py-3 border border-red-300 text-red-600 rounded-xl font-medium"
+                >
+                  Delete Listing
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
