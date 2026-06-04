@@ -1,5 +1,5 @@
 // src/pages/VerifyRecycling.jsx
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
   Camera,
@@ -31,58 +31,6 @@ import { geminiService } from "../services/geminiService";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 
-// Simple camera component using file input (reliable for all environments)
-const SimpleCameraCapture = ({ onCapture, onClose }) => {
-  const cameraInputRef = React.useRef(null);
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image must be less than 5MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        onCapture(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
-      <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">Take a Photo</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          Tap below to open your camera
-        </p>
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileChange}
-          className="hidden"
-        />
-        <button
-          onClick={() => cameraInputRef.current?.click()}
-          className="w-full py-3 bg-green-600 text-white rounded-lg font-medium mb-3 flex items-center justify-center gap-2"
-        >
-          <Camera size={18} /> Open Camera
-        </button>
-        <button
-          onClick={onClose}
-          className="w-full py-3 bg-gray-200 text-gray-700 rounded-lg font-medium"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-};
-
 const VerifyRecycling = () => {
   const { currentUser, userProfile } = useAuth();
   const navigate = useNavigate();
@@ -93,40 +41,43 @@ const VerifyRecycling = () => {
   const [selectedStatus, setSelectedStatus] = useState("");
   const [expandedSection, setExpandedSection] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [showCamera, setShowCamera] = useState(false);
   const [formData, setFormData] = useState({
     itemName: "",
     description: "",
     category: "",
   });
 
+  const galleryInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+
   const toggleSection = (section) =>
     setExpandedSection(expandedSection === section ? null : section);
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024)
-        return toast.error("Image must be less than 5MB");
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => setImagePreview(reader.result);
-      reader.readAsDataURL(file);
+  const processFile = (file) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be less than 5MB");
+      return;
     }
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result);
+    reader.readAsDataURL(file);
   };
 
-  const handleCameraCapture = (imageData) => {
-    setImagePreview(imageData);
-    fetch(imageData)
-      .then((res) => res.blob())
-      .then((blob) => {
-        const file = new File([blob], "camera-capture.jpg", {
-          type: "image/jpeg",
-        });
-        setImageFile(file);
-      })
-      .catch((err) => console.error("Error converting image:", err));
-    setShowCamera(false);
+  const handleGalleryChange = (e) => {
+    e.stopPropagation();
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+    // Reset so same file can be re-selected
+    e.target.value = "";
+  };
+
+  const handleCameraChange = (e) => {
+    e.stopPropagation();
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+    e.target.value = "";
   };
 
   const generateFallbackContent = (material) => {
@@ -264,9 +215,7 @@ const VerifyRecycling = () => {
     }
   };
 
-  // FIXED: handleSubmit with better error handling
   const handleSubmit = async () => {
-    // Validate required fields
     if (!selectedStatus) {
       toast.error("Please select a verification status");
       return;
@@ -284,7 +233,6 @@ const VerifyRecycling = () => {
     const loadingToast = toast.loading("Saving your verification...");
 
     try {
-      // Prepare verification data
       const verificationData = {
         userId: currentUser.uid,
         userName: userProfile?.fullname || "Student",
@@ -306,20 +254,15 @@ const VerifyRecycling = () => {
         timestamp: new Date().toISOString(),
       };
 
-      // Create verification report (image upload will be handled with error tolerance)
       await firebaseService.createVerificationReport(
         verificationData,
         imageFile,
       );
 
-      // Update user points
       const pointsEarned = analysis?.ecoPoints || 10;
       await firebaseService.updateUserPoints(currentUser.uid, pointsEarned);
 
-      // Dismiss loading toast
       toast.dismiss(loadingToast);
-
-      // Show success message with details
       toast.success(
         (t) => (
           <div className="flex flex-col gap-1">
@@ -336,10 +279,7 @@ const VerifyRecycling = () => {
         { duration: 5000 },
       );
 
-      // Navigate back to dashboard after delay
-      setTimeout(() => {
-        navigate("/dashboard");
-      }, 2000);
+      setTimeout(() => navigate("/dashboard"), 2000);
     } catch (error) {
       console.error("Submission error:", error);
       toast.dismiss(loadingToast);
@@ -357,6 +297,23 @@ const VerifyRecycling = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100/30 pb-20">
+      {/* Hidden file inputs — kept outside all buttons/labels */}
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleGalleryChange}
+        className="hidden"
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleCameraChange}
+        className="hidden"
+      />
+
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-green-100 px-4 py-4">
         <div className="flex items-center gap-3">
@@ -389,18 +346,16 @@ const VerifyRecycling = () => {
               </p>
               <p className="text-xs text-gray-400 mb-4">PNG, JPG up to 5MB</p>
               <div className="flex gap-3 justify-center">
-                <label className="bg-green-600 text-white px-4 py-2 rounded-lg inline-flex items-center gap-2 cursor-pointer hover:bg-green-700">
-                  <Upload size={16} /> Choose Image
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
-                </label>
                 <button
                   type="button"
-                  onClick={() => setShowCamera(true)}
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg inline-flex items-center gap-2 cursor-pointer hover:bg-green-700"
+                >
+                  <Upload size={16} /> Choose Image
+                </button>
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
                   className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition-colors flex items-center gap-2"
                 >
                   <Camera size={14} /> Take Photo
@@ -416,12 +371,14 @@ const VerifyRecycling = () => {
               />
               <div className="flex gap-3 mt-4">
                 <button
+                  type="button"
                   onClick={removeImage}
                   className="flex-1 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
                 >
                   Change Image
                 </button>
                 <button
+                  type="button"
                   onClick={analyzeImage}
                   disabled={analyzing}
                   className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
@@ -504,6 +461,7 @@ const VerifyRecycling = () => {
                   className="bg-white rounded-xl border border-green-200 overflow-hidden"
                 >
                   <button
+                    type="button"
                     onClick={() => toggleSection(section.id)}
                     className="w-full p-4 flex justify-between items-center hover:bg-green-50"
                   >
@@ -555,6 +513,7 @@ const VerifyRecycling = () => {
               {analysis.upcycleIdeas && analysis.upcycleIdeas.length > 0 && (
                 <div className="bg-white rounded-xl border border-green-200 overflow-hidden">
                   <button
+                    type="button"
                     onClick={() => toggleSection("upcycle")}
                     className="w-full p-4 flex justify-between items-center hover:bg-green-50"
                   >
@@ -638,7 +597,6 @@ const VerifyRecycling = () => {
                   }
                   className="w-full px-4 py-2 border rounded-lg focus:ring-green-500 focus:border-green-500"
                   placeholder="Item Name *"
-                  required
                 />
                 <textarea
                   value={formData.description}
@@ -648,7 +606,6 @@ const VerifyRecycling = () => {
                   className="w-full px-4 py-2 border rounded-lg focus:ring-green-500 focus:border-green-500 resize-none"
                   rows="3"
                   placeholder="How did you recycle/upcycle this item? *"
-                  required
                 />
 
                 <div className="grid grid-cols-2 gap-2">
@@ -667,6 +624,7 @@ const VerifyRecycling = () => {
                 </div>
 
                 <button
+                  type="button"
                   onClick={handleSubmit}
                   disabled={submitting}
                   className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -706,14 +664,6 @@ const VerifyRecycling = () => {
           </div>
         </div>
       </div>
-
-      {/* Camera Modal */}
-      {showCamera && (
-        <SimpleCameraCapture
-          onCapture={handleCameraCapture}
-          onClose={() => setShowCamera(false)}
-        />
-      )}
     </div>
   );
 };

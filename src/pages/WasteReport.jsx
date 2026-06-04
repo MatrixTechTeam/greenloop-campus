@@ -37,7 +37,7 @@ const WasteReport = () => {
     urgency: "normal",
   });
 
-  const fileInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
   const wasteTypes = [
@@ -159,6 +159,7 @@ const WasteReport = () => {
   };
 
   const processImageFile = (file) => {
+    if (!file) return false;
     if (file.size > 5 * 1024 * 1024) {
       toast.error("Image must be less than 5MB");
       return false;
@@ -170,41 +171,24 @@ const WasteReport = () => {
     return true;
   };
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      processImageFile(file);
-    }
+  const handleGalleryChange = (e) => {
+    e.stopPropagation();
+    const file = e.target.files?.[0];
+    if (file) processImageFile(file);
+    // Reset so same file can be re-selected
+    e.target.value = "";
   };
 
-  const handleTakePhoto = () => {
-    // Try multiple methods to open camera
-
-    // Method 1: Use input with capture attribute
-    if (cameraInputRef.current) {
-      cameraInputRef.current.click();
-      return;
-    }
-
-    // Method 2: Create temporary input
-    const tempInput = document.createElement("input");
-    tempInput.type = "file";
-    tempInput.accept = "image/*";
-    tempInput.capture = "environment";
-    tempInput.onchange = (e) => {
-      if (e.target.files && e.target.files[0]) {
-        processImageFile(e.target.files[0]);
-      }
-    };
-    tempInput.click();
+  const handleCameraChange = (e) => {
+    e.stopPropagation();
+    const file = e.target.files?.[0];
+    if (file) processImageFile(file);
+    e.target.value = "";
   };
 
   const removeImage = () => {
     setImagePreview(null);
     setImageFile(null);
-    // Reset file inputs
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
 
   const handleSubmit = async (e) => {
@@ -264,12 +248,12 @@ const WasteReport = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100/30 pb-20">
-      {/* Hidden file inputs */}
+      {/* Hidden file inputs — outside form, outside any label */}
       <input
-        ref={fileInputRef}
+        ref={galleryInputRef}
         type="file"
         accept="image/*"
-        onChange={handleImageUpload}
+        onChange={handleGalleryChange}
         className="hidden"
       />
       <input
@@ -277,7 +261,7 @@ const WasteReport = () => {
         type="file"
         accept="image/*"
         capture="environment"
-        onChange={handleImageUpload}
+        onChange={handleCameraChange}
         className="hidden"
       />
 
@@ -349,7 +333,7 @@ const WasteReport = () => {
                 <div className="flex gap-3 justify-center flex-wrap">
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => galleryInputRef.current?.click()}
                     className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
                   >
                     <Upload size={14} />
@@ -357,7 +341,7 @@ const WasteReport = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={handleTakePhoto}
+                    onClick={() => cameraInputRef.current?.click()}
                     className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition-colors flex items-center gap-2"
                   >
                     <Camera size={14} />
