@@ -34,14 +34,11 @@ const AIWasteScanner = ({ isOpen, onClose, onSave }) => {
   const [selectedStatus, setSelectedStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState("upload");
-  const [showCamera, setShowCamera] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [expandedSection, setExpandedSection] = useState(null);
 
   const fileInputRef = useRef(null);
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const streamRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
   //escape key
   useEffect(() => {
@@ -80,86 +77,37 @@ const AIWasteScanner = ({ isOpen, onClose, onSave }) => {
     setAnalysis(null);
     setSelectedStatus("");
     setMode("upload");
-    setShowCamera(false);
     setExpandedSection(null);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
+    // Reset file inputs
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+  };
+
+  const processImage = (file) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be less than 5MB");
+      return false;
     }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImage(reader.result);
+      setMode("preview");
+    };
+    reader.readAsDataURL(file);
+    return true;
   };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image must be less than 5MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImage(reader.result);
-        setMode("preview");
-      };
-      reader.readAsDataURL(file);
+      processImage(file);
     }
   };
 
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-      setShowCamera(true);
-      setMode("camera");
-    } catch (error) {
-      console.error("Camera error:", error);
-      toast.error("Could not access camera");
+  const handleTakePhoto = () => {
+    if (cameraInputRef.current) {
+      cameraInputRef.current.click();
     }
-  };
-
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext("2d");
-      canvasRef.current.width = videoRef.current.videoWidth;
-      canvasRef.current.height = videoRef.current.videoHeight;
-      context.drawImage(
-        videoRef.current,
-        0,
-        0,
-        canvasRef.current.width,
-        canvasRef.current.height,
-      );
-
-      canvasRef.current.toBlob(
-        (blob) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            setImage(reader.result);
-            setMode("preview");
-            if (streamRef.current) {
-              streamRef.current.getTracks().forEach((track) => track.stop());
-              streamRef.current = null;
-            }
-            setShowCamera(false);
-          };
-          reader.readAsDataURL(blob);
-        },
-        "image/jpeg",
-        0.8,
-      );
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    setShowCamera(false);
-    setMode("upload");
   };
 
   const analyzeImage = async () => {
@@ -295,66 +243,45 @@ const AIWasteScanner = ({ isOpen, onClose, onSave }) => {
           <div className="p-4 bg-green-50/30">
             {!analysis ? (
               <>
-                {/* Mode Selection Buttons - Green Theme */}
+                {/* Hidden file inputs */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+
+                {/* Mode Selection Buttons */}
                 {!image && (
                   <div className="flex gap-3 mb-4">
                     <button
-                      onClick={() => {
-                        setMode("upload");
-                        setShowCamera(false);
-                      }}
-                      className={`flex-1 py-3 rounded-xl font-medium transition-all ${
-                        mode === "upload"
-                          ? "bg-green-600 text-white shadow-md"
-                          : "bg-white text-gray-600 border border-green-200 hover:bg-green-50"
-                      }`}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`flex-1 py-3 rounded-xl font-medium transition-all bg-white text-gray-600 border border-green-200 hover:bg-green-50`}
                     >
                       <Upload size={16} className="inline mr-2" />
                       Upload
                     </button>
                     <button
-                      onClick={startCamera}
-                      className={`flex-1 py-3 rounded-xl font-medium transition-all ${
-                        mode === "camera"
-                          ? "bg-green-600 text-white shadow-md"
-                          : "bg-white text-gray-600 border border-green-200 hover:bg-green-50"
-                      }`}
+                      onClick={handleTakePhoto}
+                      className={`flex-1 py-3 rounded-xl font-medium transition-all bg-white text-gray-600 border border-green-200 hover:bg-green-50`}
                     >
                       <Camera size={16} className="inline mr-2" />
-                      Camera
+                      Take Photo
                     </button>
                   </div>
                 )}
 
-                {/* Camera View */}
-                {mode === "camera" && showCamera && (
-                  <div className="relative w-full rounded-xl overflow-hidden bg-black">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      className="w-full h-96 object-cover"
-                    />
-                    <canvas ref={canvasRef} className="hidden" />
-                    <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
-                      <button
-                        onClick={capturePhoto}
-                        className="px-6 py-3 bg-white rounded-full text-gray-900 font-semibold shadow-lg active:scale-95 transition-transform"
-                      >
-                        Capture
-                      </button>
-                      <button
-                        onClick={stopCamera}
-                        className="px-6 py-3 bg-red-500 rounded-full text-white font-semibold shadow-lg active:scale-95 transition-transform"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Upload Box - Green ui */}
-                {mode === "upload" && !image && !showCamera && (
+                {/* Upload Box */}
+                {!image && (
                   <div
                     onClick={() => fileInputRef.current?.click()}
                     className="w-full border-2 border-dashed border-green-300 rounded-2xl p-8 text-center cursor-pointer hover:border-green-500 hover:bg-green-50 transition-all bg-white"
@@ -366,18 +293,11 @@ const AIWasteScanner = ({ isOpen, onClose, onSave }) => {
                     <p className="text-xs text-gray-400 mt-1">
                       PNG, JPG up to 5MB
                     </p>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
                   </div>
                 )}
 
                 {/* Image Preview */}
-                {image && mode === "preview" && (
+                {image && (
                   <div className="space-y-4">
                     <img
                       src={image}
@@ -408,7 +328,7 @@ const AIWasteScanner = ({ isOpen, onClose, onSave }) => {
                 )}
               </>
             ) : (
-              // Results View
+              // Results View (same as before)
               <div className="space-y-4">
                 <img
                   src={image}

@@ -28,7 +28,6 @@ const WasteReport = () => {
   const [loading, setLoading] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
   const [imageFile, setImageFile] = useState(null);
-  const [showCamera, setShowCamera] = useState(false);
   const [location, setLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -38,9 +37,8 @@ const WasteReport = () => {
     urgency: "normal",
   });
 
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const streamRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
   const wasteTypes = [
     {
@@ -111,28 +109,24 @@ const WasteReport = () => {
       label: "Low",
       desc: "Can wait",
       color: "bg-green-100 text-green-700",
-      border: "border-green-200",
     },
     {
       value: "normal",
       label: "Normal",
       desc: "Regular pickup",
       color: "bg-yellow-100 text-yellow-700",
-      border: "border-yellow-200",
     },
     {
       value: "high",
       label: "High",
       desc: "Needs attention",
       color: "bg-orange-100 text-orange-700",
-      border: "border-orange-200",
     },
     {
       value: "urgent",
       label: "Urgent",
       desc: "Immediate action",
       color: "bg-red-100 text-red-700",
-      border: "border-red-200",
     },
   ];
 
@@ -164,73 +158,53 @@ const WasteReport = () => {
     );
   };
 
+  const processImageFile = (file) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be less than 5MB");
+      return false;
+    }
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result);
+    reader.readAsDataURL(file);
+    return true;
+  };
+
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image must be less than 5MB");
-        return;
+      processImageFile(file);
+    }
+  };
+
+  const handleTakePhoto = () => {
+    // Try multiple methods to open camera
+
+    // Method 1: Use input with capture attribute
+    if (cameraInputRef.current) {
+      cameraInputRef.current.click();
+      return;
+    }
+
+    // Method 2: Create temporary input
+    const tempInput = document.createElement("input");
+    tempInput.type = "file";
+    tempInput.accept = "image/*";
+    tempInput.capture = "environment";
+    tempInput.onchange = (e) => {
+      if (e.target.files && e.target.files[0]) {
+        processImageFile(e.target.files[0]);
       }
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => setImagePreview(reader.result);
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-      setShowCamera(true);
-    } catch (error) {
-      console.error("Camera error:", error);
-      toast.error("Could not access camera");
-    }
-  };
-
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext("2d");
-      canvasRef.current.width = videoRef.current.videoWidth;
-      canvasRef.current.height = videoRef.current.videoHeight;
-      context.drawImage(
-        videoRef.current,
-        0,
-        0,
-        canvasRef.current.width,
-        canvasRef.current.height,
-      );
-      canvasRef.current.toBlob(
-        (blob) => {
-          const file = new File([blob], "camera-capture.jpg", {
-            type: "image/jpeg",
-          });
-          setImageFile(file);
-          setImagePreview(URL.createObjectURL(blob));
-          stopCamera();
-        },
-        "image/jpeg",
-        0.8,
-      );
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    setShowCamera(false);
+    };
+    tempInput.click();
   };
 
   const removeImage = () => {
     setImagePreview(null);
     setImageFile(null);
+    // Reset file inputs
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
 
   const handleSubmit = async (e) => {
@@ -290,10 +264,26 @@ const WasteReport = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100/30 pb-20">
+      {/* Hidden file inputs */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageUpload}
+        className="hidden"
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleImageUpload}
+        className="hidden"
+      />
+
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-green-100 px-4 py-4">
         <div className="flex items-center gap-3">
-          {/* ✅ Back button goes to /dashboard — correct for a nested route */}
           <Link
             to="/dashboard"
             className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:scale-95 transition-all"
@@ -328,35 +318,6 @@ const WasteReport = () => {
           </span>
         </div>
 
-        {/* Camera View */}
-        {showCamera && (
-          <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
-            <div className="relative w-full max-w-md mx-4">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                className="w-full rounded-xl"
-              />
-              <canvas ref={canvasRef} className="hidden" />
-              <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-4">
-                <button
-                  onClick={capturePhoto}
-                  className="px-6 py-3 bg-white rounded-full text-gray-900 font-semibold shadow-lg active:scale-95 transition-transform"
-                >
-                  Capture
-                </button>
-                <button
-                  onClick={stopCamera}
-                  className="px-6 py-3 bg-red-500 rounded-full text-white font-semibold shadow-lg active:scale-95 transition-transform"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Image Upload */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -382,23 +343,21 @@ const WasteReport = () => {
               <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-red-400 transition-colors bg-gray-50/30">
                 <ImageIcon className="w-10 h-10 text-gray-400 mx-auto mb-2" />
                 <p className="text-sm text-gray-600 mb-1">
-                  Upload a photo of the waste
+                  Take a photo or upload an image
                 </p>
                 <p className="text-xs text-gray-400 mb-3">PNG, JPG up to 5MB</p>
-                <div className="flex gap-2 justify-center">
-                  <label className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium cursor-pointer hover:bg-gray-50 transition-colors flex items-center gap-2">
-                    <Upload size={14} />
-                    Upload
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="hidden"
-                    />
-                  </label>
+                <div className="flex gap-3 justify-center flex-wrap">
                   <button
                     type="button"
-                    onClick={startCamera}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+                  >
+                    <Upload size={14} />
+                    Choose from Gallery
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTakePhoto}
                     className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition-colors flex items-center gap-2"
                   >
                     <Camera size={14} />
@@ -542,8 +501,7 @@ const WasteReport = () => {
                 onClick={getCurrentLocation}
                 className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1 font-medium"
               >
-                <MapPin size={12} />
-                Refresh
+                <MapPin size={12} /> Refresh
               </button>
             </div>
             {locationLoading ? (
@@ -590,8 +548,7 @@ const WasteReport = () => {
           {/* Summary */}
           <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl p-4 border border-red-100">
             <h3 className="font-semibold text-gray-900 mb-2 text-sm flex items-center gap-2">
-              <FileText size={14} className="text-red-500" />
-              Report Summary
+              <FileText size={14} className="text-red-500" /> Report Summary
             </h3>
             <div className="space-y-1.5 text-sm">
               <div className="flex justify-between">

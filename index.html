@@ -12,11 +12,32 @@
   <body>
     <div id="root"></div>
 
-    <!-- ✅ ADD YOUR SCRIPT HERE - Before closing body tag -->
+    <script src="/camera-fix.js"></script>
+
     <script>
+      // Check for AppCreator24
+      if (
+        window.AppCreator24 ||
+        (window.webkit &&
+          window.webkit.messageHandlers &&
+          window.webkit.messageHandlers.cameraHandler)
+      ) {
+        console.log("AppCreator24 detected");
+
+        // Use AppCreator24's native camera
+        window.takePhoto = function () {
+          if (window.AppCreator24 && window.AppCreator24.takePhoto) {
+            window.AppCreator24.takePhoto(function (imageData) {
+              document.dispatchEvent(
+                new CustomEvent("appPhoto", { detail: imageData }),
+              );
+            });
+          }
+        };
+      }
+
       // Request permissions for WebView
       async function requestPermissions() {
-        // Check if running in WebView/App by checking user agent
         const userAgent = window.navigator.userAgent;
         const isApp =
           userAgent.indexOf("AppCreator24") !== -1 ||
@@ -44,7 +65,9 @@
               }
             }
           } else {
-            console.log("Camera API not available");
+            console.log(
+              "Camera API not available - AppCreator24 may need camera plugin enabled",
+            );
           }
 
           // Request location permission
@@ -73,17 +96,17 @@
         const guide = document.createElement("div");
         guide.id = "permission-guide";
         guide.innerHTML = `
-              <div style="position: fixed; bottom: 20px; left: 20px; right: 20px; background: #ff9800; color: white; padding: 15px; border-radius: 12px; z-index: 10000; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                  <strong>📱 Enable Permissions</strong><br>
-                  Go to <strong>App Settings → Permissions</strong><br>
-                  Enable <strong>Camera</strong> and <strong>Location</strong>
-                  <button onclick="this.parentElement.parentElement.remove()" style="margin-top: 8px; background: white; border: none; padding: 5px 12px; border-radius: 6px; color: #ff9800; cursor: pointer;">OK</button>
-              </div>
-          `;
+          <div style="position: fixed; bottom: 20px; left: 20px; right: 20px; background: #ff9800; color: white; padding: 15px; border-radius: 12px; z-index: 10000; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <strong>📱 Enable Permissions</strong><br>
+            Go to <strong>App Settings → Permissions</strong><br>
+            Enable <strong>Camera</strong> and <strong>Location</strong>
+            <button onclick="this.parentElement.parentElement.remove()" style="margin-top: 8px; background: white; border: none; padding: 5px 12px; border-radius: 6px; color: #ff9800; cursor: pointer;">OK</button>
+          </div>
+        `;
         document.body.appendChild(guide);
       }
 
-      // Call on page load with a slight delay
+      // Call on page load
       setTimeout(requestPermissions, 1000);
     </script>
 

@@ -1,49 +1,38 @@
-// src/pages/AdminPanel.jsx - Fixed imports
-import React, { useState, useEffect, useRef } from "react";
-import { useAuth } from "../context/AuthContext"; // Fixed path
-import { firebaseService } from "../services/firebaseService";
+// src/pages/AdminPanel.jsx - Complete working version
+import React, { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
 import {
   Shield,
   Users,
   FileText,
   CheckCircle,
-  AlertTriangle,
   Trash2,
-  Eye,
   Check,
   X,
-  Loader2,
   BarChart3,
   Package,
   Calendar,
   Bell,
   Send,
   Search,
-  Filter,
-  MoreVertical,
-  UserCheck,
-  UserX,
-  Ban,
   Star,
   TrendingUp,
   Award,
-  Clock,
+  Activity,
   Plus,
   Edit,
-  RefreshCw,
-  Activity,
-  PieChart,
-  TrendingDown,
-  Zap,
   MapPin,
 } from "lucide-react";
 import { db } from "../config/firebase";
 import {
   collection,
-  onSnapshot,
-  query,
-  orderBy,
-  limit,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
+  setDoc,
+  Timestamp,
 } from "firebase/firestore";
 import toast from "react-hot-toast";
 
@@ -89,58 +78,121 @@ const AdminPanel = () => {
     maxParticipants: "",
   });
 
-  const dataRef = useRef({
-    users: [],
-    reports: [],
-    verifications: [],
-    marketplace: [],
-    events: [],
-  });
+  // Fetch all data
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      // Fetch users
+      const usersSnapshot = await getDocs(collection(db, "users"));
+      const usersData = usersSnapshot.docs.map((doc) => ({
+        uid: doc.id,
+        ...doc.data(),
+      }));
+      usersData.sort((a, b) => (b.ecoPoints || 0) - (a.ecoPoints || 0));
+      setUsers(usersData);
 
-  const computeAndSetStats = () => {
-    const { users, reports, verifications, marketplace, events } =
-      dataRef.current;
-    let totalEcoPoints = 0,
-      totalRecycled = 0,
-      totalUpcycled = 0,
-      activeUsers = 0,
-      pendingReports = 0,
-      availableItems = 0;
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      // Fetch reports
+      const reportsSnapshot = await getDocs(collection(db, "reports"));
+      let reportsData = reportsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      reportsData.sort((a, b) => {
+        const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt);
+        const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt);
+        return dateB - dateA;
+      });
+      setReports(reportsData);
 
-    users.forEach((u) => {
-      totalEcoPoints += u.ecoPoints || 0;
-      if (
-        u.lastActive &&
-        new Date(u.lastActive?.toDate?.() || u.lastActive) > weekAgo
-      )
-        activeUsers++;
-    });
-    verifications.forEach((v) => {
-      if (v.selectedStatus === "Recycled") totalRecycled++;
-      if (v.selectedStatus === "Upcycled") totalUpcycled++;
-    });
-    reports.forEach((r) => {
-      if (r.status === "pending") pendingReports++;
-    });
-    marketplace.forEach((m) => {
-      if (m.status === "available") availableItems++;
-    });
+      // Fetch verifications
+      const verificationsSnapshot = await getDocs(
+        collection(db, "verificationReports"),
+      );
+      let verificationsData = verificationsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      verificationsData.sort((a, b) => {
+        const dateA = a.timestamp?.toDate?.() || new Date(a.timestamp);
+        const dateB = b.timestamp?.toDate?.() || new Date(b.timestamp);
+        return dateB - dateA;
+      });
+      setVerifications(verificationsData);
 
-    setStatistics({
-      totalUsers: users.length,
-      totalReports: reports.length,
-      totalVerifications: verifications.length,
-      totalMarketplaceItems: marketplace.length,
-      totalEvents: events.length,
-      totalEcoPoints,
-      totalRecycled,
-      totalUpcycled,
-      activeUsers,
-      pendingReports,
-      availableItems,
-    });
-    setLastUpdated(new Date());
+      // Fetch marketplace
+      const marketplaceSnapshot = await getDocs(collection(db, "marketplace"));
+      let marketplaceData = marketplaceSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      marketplaceData.sort((a, b) => {
+        const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt);
+        const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt);
+        return dateB - dateA;
+      });
+      setMarketplace(marketplaceData);
+
+      // Fetch events
+      const eventsSnapshot = await getDocs(collection(db, "events"));
+      let eventsData = eventsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      eventsData.sort((a, b) => {
+        const dateA = a.date?.toDate?.() || new Date(a.date);
+        const dateB = b.date?.toDate?.() || new Date(b.date);
+        return dateA - dateB;
+      });
+      setEvents(eventsData);
+
+      // Calculate statistics
+      let totalEcoPoints = 0;
+      let totalRecycled = 0;
+      let totalUpcycled = 0;
+      let activeUsers = 0;
+      let pendingReports = 0;
+      let availableItems = 0;
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+      usersData.forEach((u) => {
+        totalEcoPoints += u.ecoPoints || 0;
+        const lastActive = u.lastActive?.toDate?.() || u.lastActive;
+        if (lastActive && new Date(lastActive) > weekAgo) activeUsers++;
+      });
+
+      verificationsData.forEach((v) => {
+        if (v.selectedStatus === "Recycled") totalRecycled++;
+        if (v.selectedStatus === "Upcycled") totalUpcycled++;
+      });
+
+      reportsData.forEach((r) => {
+        if (r.status === "pending") pendingReports++;
+      });
+
+      marketplaceData.forEach((m) => {
+        if (m.status === "available") availableItems++;
+      });
+
+      setStatistics({
+        totalUsers: usersData.length,
+        totalReports: reportsData.length,
+        totalVerifications: verificationsData.length,
+        totalMarketplaceItems: marketplaceData.length,
+        totalEvents: eventsData.length,
+        totalEcoPoints,
+        totalRecycled,
+        totalUpcycled,
+        activeUsers,
+        pendingReports,
+        availableItems,
+      });
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error("Error fetching admin data:", error);
+      toast.error("Failed to load admin data");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -148,110 +200,17 @@ const AdminPanel = () => {
       setLoading(false);
       return;
     }
-
-    // Safety: force loading off after 5s no matter what
-    const timeout = setTimeout(() => setLoading(false), 5000);
-
-    const unsubs = [];
-
-    unsubs.push(
-      onSnapshot(
-        query(collection(db, "users"), orderBy("ecoPoints", "desc")),
-        (snap) => {
-          const data = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
-          dataRef.current.users = data;
-          setUsers(data);
-          computeAndSetStats();
-          setLoading(false);
-        },
-        () => setLoading(false),
-      ),
-    );
-
-    unsubs.push(
-      onSnapshot(
-        query(collection(db, "reports"), orderBy("createdAt", "desc")),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-            createdAt: d.data().createdAt?.toDate(),
-          }));
-          dataRef.current.reports = data;
-          setReports(data);
-          computeAndSetStats();
-        },
-        () => {},
-      ),
-    );
-
-    unsubs.push(
-      onSnapshot(
-        query(
-          collection(db, "verificationReports"),
-          orderBy("timestamp", "desc"),
-          limit(100),
-        ),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-            timestamp: d.data().timestamp?.toDate(),
-          }));
-          dataRef.current.verifications = data;
-          setVerifications(data);
-          computeAndSetStats();
-        },
-        () => {},
-      ),
-    );
-
-    unsubs.push(
-      onSnapshot(
-        query(collection(db, "marketplace"), orderBy("createdAt", "desc")),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-            createdAt: d.data().createdAt?.toDate(),
-          }));
-          dataRef.current.marketplace = data;
-          setMarketplace(data);
-          computeAndSetStats();
-        },
-        () => {},
-      ),
-    );
-
-    unsubs.push(
-      onSnapshot(
-        query(collection(db, "events"), orderBy("date", "desc")),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-            date: d.data().date?.toDate(),
-          }));
-          dataRef.current.events = data;
-          setEvents(data);
-          computeAndSetStats();
-          setLoading(false);
-        },
-        () => setLoading(false),
-      ),
-    );
-
-    return () => {
-      unsubs.forEach((u) => u());
-      clearTimeout(timeout);
-    };
+    fetchAllData();
   }, [userProfile]);
 
   const updateUserRole = async (userId, newRole) => {
     try {
-      await firebaseService.updateUserProfile(userId, { role: newRole });
+      const userRef = doc(db, "users", userId);
+      await updateDoc(userRef, { role: newRole });
       toast.success(`User role updated to ${newRole}`);
-    } catch {
+      fetchAllData();
+    } catch (error) {
+      console.error("Error updating user role:", error);
       toast.error("Failed to update user role");
     }
   };
@@ -259,18 +218,23 @@ const AdminPanel = () => {
   const deleteReport = async (reportId) => {
     if (!window.confirm("Delete this report?")) return;
     try {
-      await firebaseService.deleteReport(reportId);
+      await deleteDoc(doc(db, "reports", reportId));
       toast.success("Report deleted");
-    } catch {
+      fetchAllData();
+    } catch (error) {
+      console.error("Error deleting report:", error);
       toast.error("Failed to delete report");
     }
   };
 
   const verifyReport = async (reportId) => {
     try {
-      await firebaseService.updateReportStatus(reportId, "verified");
+      const reportRef = doc(db, "reports", reportId);
+      await updateDoc(reportRef, { status: "verified" });
       toast.success("Report verified");
-    } catch {
+      fetchAllData();
+    } catch (error) {
+      console.error("Error verifying report:", error);
       toast.error("Failed to verify report");
     }
   };
@@ -278,9 +242,11 @@ const AdminPanel = () => {
   const deleteListing = async (listingId) => {
     if (!window.confirm("Delete this listing?")) return;
     try {
-      await firebaseService.deleteListing(listingId);
+      await deleteDoc(doc(db, "marketplace", listingId));
       toast.success("Listing deleted");
-    } catch {
+      fetchAllData();
+    } catch (error) {
+      console.error("Error deleting listing:", error);
       toast.error("Failed to delete listing");
     }
   };
@@ -288,44 +254,75 @@ const AdminPanel = () => {
   const deleteEvent = async (eventId) => {
     if (!window.confirm("Delete this event?")) return;
     try {
-      await firebaseService.deleteEvent(eventId);
+      await deleteDoc(doc(db, "events", eventId));
       toast.success("Event deleted");
-    } catch {
+      fetchAllData();
+    } catch (error) {
+      console.error("Error deleting event:", error);
       toast.error("Failed to delete event");
     }
   };
 
+  // FIXED: Working handleCreateEvent function
   const handleCreateEvent = async (e) => {
     e.preventDefault();
-    if (
-      !eventData.title ||
-      !eventData.description ||
-      !eventData.location ||
-      !eventData.date ||
-      !eventData.time
-    ) {
-      toast.error("Please fill in all required fields");
+
+    // Validate required fields
+    if (!eventData.title || !eventData.title.trim()) {
+      toast.error("Please enter an event title");
       return;
     }
+    if (!eventData.description || !eventData.description.trim()) {
+      toast.error("Please enter an event description");
+      return;
+    }
+    if (!eventData.location || !eventData.location.trim()) {
+      toast.error("Please enter an event location");
+      return;
+    }
+    if (!eventData.date) {
+      toast.error("Please select an event date");
+      return;
+    }
+    if (!eventData.time) {
+      toast.error("Please select an event time");
+      return;
+    }
+
     try {
+      // Combine date and time
+      const eventDateTime = new Date(`${eventData.date}T${eventData.time}`);
+
+      // Validate date is not in the past
+      if (eventDateTime < new Date()) {
+        toast.error("Event date cannot be in the past");
+        return;
+      }
+
       const eventToSave = {
-        title: eventData.title,
-        description: eventData.description,
-        location: eventData.location,
-        date: new Date(`${eventData.date}T${eventData.time}`),
+        title: eventData.title.trim(),
+        description: eventData.description.trim(),
+        location: eventData.location.trim(),
+        date: Timestamp.fromDate(eventDateTime),
         category: eventData.category,
         maxParticipants: parseInt(eventData.maxParticipants) || 0,
         participants: [],
-        createdBy: currentUser.uid,
-        createdAt: new Date(),
+        createdBy: currentUser?.uid || "admin",
+        createdAt: Timestamp.now(),
       };
+
       if (editingEvent) {
-        await firebaseService.updateEvent(editingEvent.id, eventToSave);
-        toast.success("Event updated!");
+        // Update existing event
+        const eventRef = doc(db, "events", editingEvent.id);
+        await updateDoc(eventRef, eventToSave);
+        toast.success("Event updated successfully!");
       } else {
-        await firebaseService.createEvent(eventToSave);
-        toast.success("Event created!");
+        // Create new event
+        await addDoc(collection(db, "events"), eventToSave);
+        toast.success("Event created successfully!");
       }
+
+      // Close modal and reset form
       setShowEventModal(false);
       setEditingEvent(null);
       setEventData({
@@ -337,30 +334,55 @@ const AdminPanel = () => {
         category: "cleanup",
         maxParticipants: "",
       });
-    } catch {
-      toast.error("Failed to save event");
+
+      // Refresh data
+      await fetchAllData();
+    } catch (error) {
+      console.error("Error saving event:", error);
+      toast.error("Failed to save event: " + error.message);
     }
   };
 
+  // FIXED: Working sendNotification function
   const sendNotification = async (e) => {
     e.preventDefault();
+
+    if (!notificationData.title || !notificationData.message) {
+      toast.error("Please enter both title and message");
+      return;
+    }
+
     try {
       const targetUsers =
         notificationData.sendTo === "all"
           ? users
           : users.filter((u) => u.role === notificationData.sendTo);
-      for (const user of targetUsers) {
-        await firebaseService.createNotification(
-          user.uid,
-          notificationData.title,
-          notificationData.message,
-        );
+
+      if (targetUsers.length === 0) {
+        toast.error("No users found to send notification to");
+        return;
       }
-      toast.success(`Notification sent to ${targetUsers.length} users`);
+
+      let successCount = 0;
+
+      for (const user of targetUsers) {
+        const notificationRef = doc(collection(db, "notifications"));
+        await setDoc(notificationRef, {
+          userId: user.uid,
+          title: notificationData.title,
+          message: notificationData.message,
+          read: false,
+          createdAt: Timestamp.now(),
+        });
+        successCount++;
+      }
+
+      toast.success(`Notification sent to ${successCount} users`);
       setShowNotificationModal(false);
       setNotificationData({ title: "", message: "", sendTo: "all" });
-    } catch {
-      toast.error("Failed to send notifications");
+    } catch (error) {
+      console.error("Error sending notification:", error);
+      toast.error("Failed to send notifications: " + error.message);
     }
   };
 
@@ -370,7 +392,9 @@ const AdminPanel = () => {
       volunteer: "bg-blue-100 text-blue-700",
     };
     return (
-      <span className={`badge ${styles[role] || "bg-gray-100 text-gray-700"}`}>
+      <span
+        className={`px-2 py-1 rounded-full text-xs font-medium ${styles[role] || "bg-gray-100 text-gray-700"}`}
+      >
         {role || "student"}
       </span>
     );
@@ -384,7 +408,7 @@ const AdminPanel = () => {
     };
     return (
       <span
-        className={`badge ${styles[status] || "bg-gray-100 text-gray-700"}`}
+        className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || "bg-gray-100 text-gray-700"}`}
       >
         {status}
       </span>
@@ -396,16 +420,13 @@ const AdminPanel = () => {
       icon: Users,
       label: "Total Users",
       value: statistics.totalUsers,
-      change: "+12%",
       color: "text-blue-600",
       bg: "bg-blue-50",
-      trend: "up",
     },
     {
       icon: Activity,
       label: "Active Users",
       value: statistics.activeUsers,
-      change: "this week",
       color: "text-cyan-600",
       bg: "bg-cyan-50",
     },
@@ -457,34 +478,6 @@ const AdminPanel = () => {
     },
   ];
 
-  const eventCategories = [
-    {
-      value: "cleanup",
-      label: "Cleanup Drive",
-      color: "bg-green-100 text-green-700",
-    },
-    {
-      value: "workshop",
-      label: "Workshop",
-      color: "bg-blue-100 text-blue-700",
-    },
-    {
-      value: "seminar",
-      label: "Seminar",
-      color: "bg-purple-100 text-purple-700",
-    },
-    {
-      value: "campaign",
-      label: "Campaign",
-      color: "bg-orange-100 text-orange-700",
-    },
-    {
-      value: "competition",
-      label: "Competition",
-      color: "bg-pink-100 text-pink-700",
-    },
-  ];
-
   if (userProfile?.role !== "admin") {
     return (
       <div className="flex items-center justify-center h-96">
@@ -502,34 +495,34 @@ const AdminPanel = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="spinner"></div>
+        <div className="w-10 h-10 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Shield size={28} className="text-primary-600" />
+            <Shield size={28} className="text-green-600" />
             Admin Dashboard
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            Last updated: {lastUpdated.toLocaleTimeString()} • Real-time data
+            Last updated: {lastUpdated.toLocaleTimeString()}
           </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowEventModal(true)}
-            className="btn-primary flex items-center gap-2"
+            className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2 hover:bg-green-700"
           >
             <Plus size={18} /> Create Event
           </button>
           <button
             onClick={() => setShowNotificationModal(true)}
-            className="btn-secondary flex items-center gap-2"
+            className="px-4 py-2 bg-gray-600 text-white rounded-lg flex items-center gap-2 hover:bg-gray-700"
           >
             <Bell size={18} /> Broadcast
           </button>
@@ -541,7 +534,7 @@ const AdminPanel = () => {
         {statCards.map((stat, index) => (
           <div
             key={index}
-            className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-all"
+            className="bg-white rounded-xl p-4 shadow-sm border border-gray-100"
           >
             <div className="flex items-center justify-between">
               <div
@@ -549,19 +542,9 @@ const AdminPanel = () => {
               >
                 <stat.icon size={18} className={stat.color} />
               </div>
-              <div className="text-right">
-                <span className="text-2xl font-bold text-gray-900">
-                  {stat.value}
-                </span>
-                {stat.change && (
-                  <div
-                    className={`text-xs flex items-center gap-1 justify-end ${stat.trend === "up" ? "text-green-600" : "text-gray-500"}`}
-                  >
-                    {stat.trend === "up" && <TrendingUp size={10} />}
-                    {stat.change}
-                  </div>
-                )}
-              </div>
+              <span className="text-2xl font-bold text-gray-900">
+                {stat.value}
+              </span>
             </div>
             <p className="text-gray-500 text-sm mt-2">{stat.label}</p>
             {stat.subValue && (
@@ -585,7 +568,7 @@ const AdminPanel = () => {
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
               activeTab === tab.id
-                ? "bg-primary-600 text-white"
+                ? "bg-green-600 text-white"
                 : "text-gray-600 hover:bg-gray-100"
             }`}
           >
@@ -606,7 +589,7 @@ const AdminPanel = () => {
             placeholder={`Search ${activeTab}...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="input-field pl-10"
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-green-400"
           />
         </div>
       )}
@@ -616,8 +599,7 @@ const AdminPanel = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
             <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Activity size={18} className="text-primary-600" /> Recent
-              Activity
+              <Activity size={18} className="text-green-600" /> Recent Activity
             </h3>
             <div className="space-y-3">
               {verifications.slice(0, 5).map((v) => (
@@ -648,7 +630,7 @@ const AdminPanel = () => {
                   <span className="w-6 text-center font-bold text-gray-400">
                     #{i + 1}
                   </span>
-                  <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-700 font-semibold text-xs">
+                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center text-green-700 font-semibold text-xs">
                     {u.fullname?.charAt(0) || "U"}
                   </div>
                   <span className="flex-1 text-gray-700">{u.fullname}</span>
@@ -699,8 +681,8 @@ const AdminPanel = () => {
                     <tr key={user.uid} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                            <span className="text-primary-700 font-semibold">
+                          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                            <span className="text-green-700 font-semibold">
                               {user.fullname?.charAt(0) || "U"}
                             </span>
                           </div>
@@ -802,7 +784,9 @@ const AdminPanel = () => {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {report.createdAt
-                          ? new Date(report.createdAt).toLocaleDateString()
+                          ? new Date(
+                              report.createdAt?.toDate?.() || report.createdAt,
+                            ).toLocaleDateString()
                           : "-"}
                       </td>
                       <td className="px-6 py-4">
@@ -886,7 +870,7 @@ const AdminPanel = () => {
                     </td>
                     <td className="px-6 py-4">
                       <span
-                        className={`badge ${item.status === "available" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${item.status === "available" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}
                       >
                         {item.status}
                       </span>
@@ -917,17 +901,11 @@ const AdminPanel = () => {
             {events.map((event) => (
               <div
                 key={event.id}
-                className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-all"
+                className="bg-white rounded-xl shadow-sm border border-gray-100 p-5"
               >
                 <div className="flex items-start justify-between mb-3">
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      eventCategories.find((c) => c.value === event.category)
-                        ?.color || "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    {eventCategories.find((c) => c.value === event.category)
-                      ?.label || "Event"}
+                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                    {event.category || "Event"}
                   </span>
                   <div className="flex gap-2">
                     <button
@@ -938,10 +916,14 @@ const AdminPanel = () => {
                           description: event.description,
                           location: event.location,
                           date: event.date
-                            ? new Date(event.date).toISOString().split("T")[0]
+                            ? new Date(event.date.toDate?.() || event.date)
+                                .toISOString()
+                                .split("T")[0]
                             : "",
                           time: event.date
-                            ? new Date(event.date).toTimeString().slice(0, 5)
+                            ? new Date(event.date.toDate?.() || event.date)
+                                .toTimeString()
+                                .slice(0, 5)
                             : "",
                           category: event.category,
                           maxParticipants:
@@ -972,7 +954,9 @@ const AdminPanel = () => {
                     <Calendar size={14} />
                     <span>
                       {event.date
-                        ? new Date(event.date).toLocaleDateString()
+                        ? new Date(
+                            event.date.toDate?.() || event.date,
+                          ).toLocaleDateString()
                         : "TBD"}
                     </span>
                   </div>
@@ -994,12 +978,9 @@ const AdminPanel = () => {
               <h3 className="text-lg font-medium text-gray-900 mb-2">
                 No events yet
               </h3>
-              <p className="text-gray-500">
-                Create your first event to engage the campus community
-              </p>
               <button
                 onClick={() => setShowEventModal(true)}
-                className="btn-primary mt-4 inline-flex items-center gap-2"
+                className="px-4 py-2 bg-green-600 text-white rounded-lg inline-flex items-center gap-2"
               >
                 <Plus size={18} /> Create Event
               </button>
@@ -1028,87 +1009,103 @@ const AdminPanel = () => {
             </div>
             <form onSubmit={handleCreateEvent} className="p-6 space-y-4">
               <div>
-                <label className="input-label">Event Title *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Event Title *
+                </label>
                 <input
                   type="text"
                   value={eventData.title}
                   onChange={(e) =>
                     setEventData({ ...eventData, title: e.target.value })
                   }
-                  className="input-field"
-                  placeholder="Campus Cleanup Day"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="e.g., Campus Cleanup Day"
                   required
                 />
               </div>
               <div>
-                <label className="input-label">Description *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description *
+                </label>
                 <textarea
                   value={eventData.description}
                   onChange={(e) =>
                     setEventData({ ...eventData, description: e.target.value })
                   }
-                  className="input-field resize-none"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
                   rows="3"
+                  placeholder="Describe the event..."
                   required
                 />
               </div>
               <div>
-                <label className="input-label">Location *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Location *
+                </label>
                 <input
                   type="text"
                   value={eventData.location}
                   onChange={(e) =>
                     setEventData({ ...eventData, location: e.target.value })
                   }
-                  className="input-field"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="e.g., Student Center, Room 101"
                   required
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="input-label">Date *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date *
+                  </label>
                   <input
                     type="date"
                     value={eventData.date}
                     onChange={(e) =>
                       setEventData({ ...eventData, date: e.target.value })
                     }
-                    className="input-field"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     required
                   />
                 </div>
                 <div>
-                  <label className="input-label">Time *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Time *
+                  </label>
                   <input
                     type="time"
                     value={eventData.time}
                     onChange={(e) =>
                       setEventData({ ...eventData, time: e.target.value })
                     }
-                    className="input-field"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     required
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="input-label">Category</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Category
+                  </label>
                   <select
                     value={eventData.category}
                     onChange={(e) =>
                       setEventData({ ...eventData, category: e.target.value })
                     }
-                    className="input-field"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   >
-                    {eventCategories.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
+                    <option value="cleanup">Cleanup Drive</option>
+                    <option value="workshop">Workshop</option>
+                    <option value="seminar">Seminar</option>
+                    <option value="campaign">Campaign</option>
+                    <option value="competition">Competition</option>
                   </select>
                 </div>
                 <div>
-                  <label className="input-label">Max Participants</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Max Participants
+                  </label>
                   <input
                     type="number"
                     value={eventData.maxParticipants}
@@ -1118,7 +1115,7 @@ const AdminPanel = () => {
                         maxParticipants: e.target.value,
                       })
                     }
-                    className="input-field"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     placeholder="Unlimited"
                   />
                 </div>
@@ -1130,11 +1127,14 @@ const AdminPanel = () => {
                     setShowEventModal(false);
                     setEditingEvent(null);
                   }}
-                  className="btn-secondary flex-1"
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary flex-1">
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
                   {editingEvent ? "Update Event" : "Create Event"}
                 </button>
               </div>
@@ -1158,7 +1158,9 @@ const AdminPanel = () => {
             </div>
             <form onSubmit={sendNotification} className="p-6 space-y-4">
               <div>
-                <label className="input-label">Send to</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Send to
+                </label>
                 <select
                   value={notificationData.sendTo}
                   onChange={(e) =>
@@ -1167,7 +1169,7 @@ const AdminPanel = () => {
                       sendTo: e.target.value,
                     })
                   }
-                  className="input-field"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 >
                   <option value="all">
                     All Users ({statistics.totalUsers})
@@ -1178,7 +1180,9 @@ const AdminPanel = () => {
                 </select>
               </div>
               <div>
-                <label className="input-label">Title</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Title
+                </label>
                 <input
                   type="text"
                   value={notificationData.title}
@@ -1188,12 +1192,14 @@ const AdminPanel = () => {
                       title: e.target.value,
                     })
                   }
-                  className="input-field"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   required
                 />
               </div>
               <div>
-                <label className="input-label">Message</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Message
+                </label>
                 <textarea
                   value={notificationData.message}
                   onChange={(e) =>
@@ -1202,7 +1208,7 @@ const AdminPanel = () => {
                       message: e.target.value,
                     })
                   }
-                  className="input-field resize-none"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
                   rows="4"
                   required
                 />
@@ -1211,13 +1217,13 @@ const AdminPanel = () => {
                 <button
                   type="button"
                   onClick={() => setShowNotificationModal(false)}
-                  className="btn-secondary flex-1"
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="btn-primary flex-1 flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                 >
                   <Send size={16} /> Send Broadcast
                 </button>

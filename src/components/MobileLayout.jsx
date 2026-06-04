@@ -61,6 +61,44 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 
+// Helper function to safely format numbers
+const safeNumber = (value, fallback = 0) => {
+  const num = Number(value);
+  return isNaN(num) ? fallback : num;
+};
+
+// Helper function to safely format event date
+const formatEventDate = (eventDate) => {
+  if (!eventDate) return { day: "?", month: "", formatted: "Date TBD" };
+  try {
+    let date;
+    if (eventDate && typeof eventDate.toDate === "function") {
+      date = eventDate.toDate();
+    } else if (eventDate) {
+      date = new Date(eventDate);
+    } else {
+      return { day: "?", month: "", formatted: "Date TBD" };
+    }
+
+    if (isNaN(date.getTime())) {
+      return { day: "?", month: "", formatted: "Date TBD" };
+    }
+
+    return {
+      day: date.getDate(),
+      month: date.toLocaleString("default", { month: "short" }),
+      formatted: date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    };
+  } catch (error) {
+    console.error("Error formatting date:", error);
+    return { day: "?", month: "", formatted: "Date TBD" };
+  }
+};
+
 // ── Splash Screen Component ──
 const SplashScreen = ({ message, onComplete }) => {
   useEffect(() => {
@@ -192,7 +230,7 @@ const Sidebar = memo(
                     </p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs bg-green-100 px-2 py-0.5 rounded-full text-green-700">
-                        {userProfile?.ecoPoints || 0} pts
+                        {safeNumber(userProfile?.ecoPoints, 0)} pts
                       </span>
                       <span className="text-xs text-gray-500 truncate">
                         {userProfile?.badge || "Eco Rookie"}
@@ -292,7 +330,7 @@ const UserDetailsModal = memo(({ user, rank, onClose }) => {
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-green-50 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-green-600">
-                {user.ecoPoints || 0}
+                {safeNumber(user.ecoPoints, 0)}
               </p>
               <p className="text-xs text-gray-500">Eco Points</p>
             </div>
@@ -303,110 +341,6 @@ const UserDetailsModal = memo(({ user, rank, onClose }) => {
               <p className="text-xs text-gray-500">Global Rank</p>
             </div>
           </div>
-          {(user.department || user.faculty || user.studentId) && (
-            <div>
-              <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-2">
-                <GraduationCap size={14} className="text-green-600" /> Academic
-                Information
-              </h4>
-              <div className="space-y-2 pl-5">
-                {user.department && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Briefcase size={13} className="text-gray-400 shrink-0" />
-                    <span className="text-gray-600">Department:</span>
-                    <span className="text-gray-800">{user.department}</span>
-                  </div>
-                )}
-                {user.faculty && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <BookOpen size={13} className="text-gray-400 shrink-0" />
-                    <span className="text-gray-600">Faculty:</span>
-                    <span className="text-gray-800">{user.faculty}</span>
-                  </div>
-                )}
-                {user.studentId && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <GraduationCap
-                      size={13}
-                      className="text-gray-400 shrink-0"
-                    />
-                    <span className="text-gray-600">Student ID:</span>
-                    <span className="text-gray-800">{user.studentId}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          {(user.phone || user.location || user.website) && (
-            <div>
-              <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-2">
-                <Phone size={14} className="text-green-600" /> Contact
-              </h4>
-              <div className="space-y-2 pl-5">
-                {user.phone && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Phone size={13} className="text-gray-400 shrink-0" />
-                    <span className="text-gray-800">{user.phone}</span>
-                  </div>
-                )}
-                {user.location && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <MapPin size={13} className="text-gray-400 shrink-0" />
-                    <span className="text-gray-800">{user.location}</span>
-                  </div>
-                )}
-                {user.website && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Globe size={13} className="text-gray-400 shrink-0" />
-                    <a
-                      href={user.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-green-600 hover:underline truncate"
-                    >
-                      {user.website.replace(/^https?:\/\//, "")}
-                    </a>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          {user.bio && (
-            <div>
-              <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-2">
-                <Globe size={14} className="text-green-600" /> About
-              </h4>
-              <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                {user.bio}
-              </p>
-            </div>
-          )}
-          {user.interests?.length > 0 && (
-            <div>
-              <h4 className="font-semibold text-gray-900 text-sm mb-2">
-                Interests
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {user.interests.map((interest, idx) => (
-                  <span
-                    key={idx}
-                    className="px-2 py-1 bg-green-50 text-green-700 rounded-full text-xs"
-                  >
-                    {interest}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {user.createdAt && (
-            <div className="pt-2 text-center text-xs text-gray-400 border-t border-green-100">
-              Member since{" "}
-              {new Date(user.createdAt).toLocaleDateString("en-US", {
-                month: "long",
-                year: "numeric",
-              })}
-            </div>
-          )}
           <button
             onClick={onClose}
             className="w-full mt-2 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
@@ -466,13 +400,10 @@ const MobileLayout = () => {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [leaderboardTab, setLeaderboardTab] = useState("individual");
   const [openGroups, setOpenGroups] = useState({});
-
-  // Splash screen states
   const [showSplash, setShowSplash] = useState(false);
   const [splashMessage, setSplashMessage] = useState("");
   const [isFirstTime, setIsFirstTime] = useState(false);
 
-  // Check if first time user
   useEffect(() => {
     const hasVisited = localStorage.getItem("hasVisited");
     if (!hasVisited && currentUser) {
@@ -483,26 +414,18 @@ const MobileLayout = () => {
     }
   }, [currentUser]);
 
-  // FIXED: Handle go back home with splash screen
   const handleGoHome = useCallback(() => {
     if (sidebarOpen) setSidebarOpen(false);
-
     if (location.pathname === "/dashboard") {
       setSplashMessage("GreenLoop");
       setShowSplash(true);
-      setTimeout(() => {
-        setShowSplash(false);
-      }, 1500);
+      setTimeout(() => setShowSplash(false), 1500);
       return;
     }
-
     setSplashMessage("Loading Dashboard...");
     setShowSplash(true);
     navigate("/dashboard");
-
-    setTimeout(() => {
-      setShowSplash(false);
-    }, 1500);
+    setTimeout(() => setShowSplash(false), 1500);
   }, [navigate, location.pathname, sidebarOpen]);
 
   const categories = useMemo(
@@ -520,7 +443,6 @@ const MobileLayout = () => {
     ],
     [],
   );
-
   const conditions = useMemo(
     () => [
       {
@@ -565,7 +487,6 @@ const MobileLayout = () => {
     [],
   );
 
-  // ── Fetch all at once ──
   const fetchAllData = useCallback(async () => {
     if (!currentUser) return;
     try {
@@ -658,7 +579,6 @@ const MobileLayout = () => {
     }
   }, [leaderboard]);
 
-  // ── Memoized filtered lists ──
   const filteredLeaderboard = useMemo(() => {
     return leaderboard
       .filter((user) => {
@@ -699,7 +619,6 @@ const MobileLayout = () => {
     );
   }, [listings, marketplaceSearch, selectedCategory]);
 
-  // ── Leaderboard group aggregations ──
   const groupedByDepartment = useMemo(() => {
     const map = {};
     leaderboard.forEach((u) => {
@@ -763,22 +682,26 @@ const MobileLayout = () => {
       (sum, r) => sum + (CO2_SAVINGS[r.wasteType?.toLowerCase()] || 0),
       0,
     );
+    const rank = leaderboard.findIndex((u) => u.uid === currentUser?.uid) + 1;
     return [
-      { icon: Star, label: "Points", value: userProfile?.ecoPoints || 0 },
+      {
+        icon: Star,
+        label: "Points",
+        value: safeNumber(userProfile?.ecoPoints, 0),
+      },
       {
         icon: Recycle,
         label: "Recycled",
         value: recentActivity.filter((a) => a.selectedStatus === "Recycled")
           .length,
       },
-      { icon: Flame, label: "Streak", value: streak },
+      { icon: Flame, label: "Streak", value: safeNumber(streak, 0) },
+      { icon: Trophy, label: "Rank", value: rank > 0 ? rank : "--" },
       {
-        icon: Trophy,
-        label: "Rank",
-        value:
-          leaderboard.findIndex((u) => u.uid === currentUser?.uid) + 1 || "--",
+        icon: Wind,
+        label: "CO₂ Saved",
+        value: `${safeNumber(co2, 0).toFixed(1)}kg`,
       },
-      { icon: Wind, label: "CO₂ Saved", value: `${co2.toFixed(1)}kg` },
     ];
   }, [userProfile?.ecoPoints, recentActivity, leaderboard, currentUser?.uid]);
 
@@ -955,7 +878,7 @@ const MobileLayout = () => {
               </span>
               <span className="text-xs text-green-200">•</span>
               <span className="text-xs font-medium">
-                {userProfile?.ecoPoints || 0} pts
+                {safeNumber(userProfile?.ecoPoints, 0)} pts
               </span>
             </div>
           </div>
@@ -971,7 +894,9 @@ const MobileLayout = () => {
             <div className="w-8 h-8 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-1.5">
               <stat.icon size={14} className="text-green-600" />
             </div>
-            <p className="text-base font-bold text-gray-900">{stat.value}</p>
+            <p className="text-base font-bold text-gray-900">
+              {stat.value === "--" ? stat.value : safeNumber(stat.value, 0)}
+            </p>
             <p className="text-[10px] text-gray-500">{stat.label}</p>
           </div>
         ))}
@@ -1065,7 +990,7 @@ const MobileLayout = () => {
                   </div>
                 </div>
                 <span className="text-xs font-semibold text-green-600">
-                  +{item.ecoPointsAwarded || 10}
+                  +{safeNumber(item.ecoPointsAwarded, 10)}
                 </span>
               </div>
             ))
@@ -1096,6 +1021,8 @@ const MobileLayout = () => {
                 event.maxParticipants > 0 &&
                 event.participants?.length >= event.maxParticipants;
               const isJoining = joiningEventId === event.id;
+              const dateInfo = formatEventDate(event.date);
+
               return (
                 <div
                   key={event.id}
@@ -1103,14 +1030,10 @@ const MobileLayout = () => {
                 >
                   <div className="w-12 h-12 bg-green-50 rounded-xl flex flex-col items-center justify-center shrink-0">
                     <span className="text-base font-bold text-green-700">
-                      {event.date ? new Date(event.date).getDate() : "?"}
+                      {dateInfo.day}
                     </span>
                     <span className="text-[10px] text-green-500">
-                      {event.date
-                        ? new Date(event.date).toLocaleString("default", {
-                            month: "short",
-                          })
-                        : ""}
+                      {dateInfo.month}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
@@ -1121,7 +1044,7 @@ const MobileLayout = () => {
                       {event.location}
                     </p>
                     <p className="text-[10px] text-gray-400">
-                      {event.participants?.length || 0} participants
+                      {safeNumber(event.participants?.length, 0)} participants
                     </p>
                   </div>
                   {!hasJoined && !isFull && currentUser && (
@@ -1194,11 +1117,7 @@ const MobileLayout = () => {
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${
-                selectedCategory === cat
-                  ? "bg-green-600 text-white"
-                  : "bg-green-50 text-gray-600 hover:bg-green-100"
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${selectedCategory === cat ? "bg-green-600 text-white" : "bg-green-50 text-gray-600 hover:bg-green-100"}`}
             >
               {cat}
             </button>
@@ -1230,7 +1149,7 @@ const MobileLayout = () => {
               )}
               <div className="absolute top-2 right-2 bg-green-600 rounded-full px-2 py-0.5">
                 <span className="text-white text-[10px] font-semibold">
-                  {item.ecoValue} pts
+                  {safeNumber(item.ecoValue, 5)} pts
                 </span>
               </div>
             </div>
@@ -1270,7 +1189,137 @@ const MobileLayout = () => {
     </div>
   );
 
-  // ── Group list renderer (department / faculty tabs) ──
+  // ── Render Leaderboard ──
+  const renderLeaderboard = () => {
+    const searchTerm = leaderboardSearch.toLowerCase();
+    const filteredDeptGroups = groupedByDepartment.filter(
+      (g) => !searchTerm || g.name.toLowerCase().includes(searchTerm),
+    );
+    const filteredFacGroups = groupedByFaculty.filter(
+      (g) => !searchTerm || g.name.toLowerCase().includes(searchTerm),
+    );
+    const countLabel =
+      leaderboardTab === "individual"
+        ? `Showing ${filteredLeaderboard.length} of ${leaderboard.length} users`
+        : leaderboardTab === "department"
+          ? `${filteredDeptGroups.length} department${filteredDeptGroups.length !== 1 ? "s" : ""}`
+          : `${filteredFacGroups.length} facult${filteredFacGroups.length !== 1 ? "ies" : "y"}`;
+
+    return (
+      <div className="space-y-4 pb-20">
+        <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold">Leaderboard</h1>
+              <p className="text-sm text-green-100 mt-1">Top Eco Warriors</p>
+            </div>
+            {leaderboardTab === "individual" && (
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="px-3 py-2 bg-white/20 rounded-xl text-sm font-medium flex items-center gap-2"
+              >
+                <Filter size={14} /> Filters
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex bg-white rounded-xl p-1 border border-green-100 gap-1 shadow-sm">
+          {[
+            { key: "individual", label: "Individual" },
+            { key: "department", label: "Department" },
+            { key: "faculty", label: "Faculty" },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setLeaderboardTab(tab.key);
+                setLeaderboardSearch("");
+                setOpenGroups({});
+                setShowFilters(false);
+              }}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${leaderboardTab === tab.key ? "bg-green-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-green-400"
+          />
+          <input
+            type="text"
+            placeholder={
+              leaderboardTab === "individual"
+                ? "Search users..."
+                : leaderboardTab === "department"
+                  ? "Search departments..."
+                  : "Search faculties..."
+            }
+            value={leaderboardSearch}
+            onChange={(e) => setLeaderboardSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-3 bg-white rounded-xl border border-green-200 text-sm focus:outline-none focus:border-green-400"
+          />
+        </div>
+        <p className="text-xs text-gray-500 px-1">{countLabel}</p>
+        {leaderboardTab === "individual" && (
+          <div className="bg-white rounded-xl shadow-sm border border-green-100 overflow-hidden">
+            <div className="divide-y divide-green-50">
+              {filteredLeaderboard.length === 0 ? (
+                <div className="p-12 text-center">
+                  <Trophy size={48} className="mx-auto text-gray-300 mb-3" />
+                  <p className="text-gray-500">No users found</p>
+                </div>
+              ) : (
+                filteredLeaderboard.map((user, idx) => {
+                  const rank = idx + 1;
+                  const isCurrentUser = user.uid === currentUser?.uid;
+                  return (
+                    <div
+                      key={user.uid}
+                      onClick={() => {
+                        setSelectedUser(user);
+                        setShowUserModal(true);
+                      }}
+                      className={`px-4 py-3 flex items-center gap-3 cursor-pointer transition-colors ${isCurrentUser ? "bg-green-50" : "hover:bg-green-50/30"}`}
+                    >
+                      <div className="flex items-center gap-1 w-10 shrink-0">
+                        {getRankIcon(rank)}
+                        <div
+                          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${getRankBadge(rank)}`}
+                        >
+                          {rank > 3 ? rank : null}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 text-sm truncate">
+                          {user.fullname || "Anonymous"}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {user.department || user.faculty || "Student"}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-bold text-green-600 text-sm">
+                          {safeNumber(user.ecoPoints, 0)}
+                        </p>
+                        <p className="text-[10px] text-gray-400">pts</p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+        {leaderboardTab === "department" && renderGroupList(filteredDeptGroups)}
+        {leaderboardTab === "faculty" && renderGroupList(filteredFacGroups)}
+      </div>
+    );
+  };
+
+  // ── Render Group List ──
   const renderGroupList = (groups) => {
     if (groups.length === 0) {
       return (
@@ -1316,7 +1365,7 @@ const MobileLayout = () => {
                 <div className="flex items-center gap-2 shrink-0">
                   <div className="text-right">
                     <p className="font-bold text-green-600 text-sm">
-                      {group.total.toLocaleString()}
+                      {safeNumber(group.total, 0).toLocaleString()}
                     </p>
                     <p className="text-[10px] text-gray-400">total pts</p>
                   </div>
@@ -1376,7 +1425,7 @@ const MobileLayout = () => {
                             </div>
                             <div className="text-right shrink-0">
                               <p className="font-bold text-green-600 text-sm">
-                                {user.ecoPoints || 0}
+                                {safeNumber(user.ecoPoints, 0)}
                               </p>
                               <p className="text-[10px] text-gray-400">pts</p>
                             </div>
@@ -1394,216 +1443,7 @@ const MobileLayout = () => {
     );
   };
 
-  // ── Render Leaderboard ──
-  const renderLeaderboard = () => {
-    const searchTerm = leaderboardSearch.toLowerCase();
-    const filteredDeptGroups = groupedByDepartment.filter(
-      (g) => !searchTerm || g.name.toLowerCase().includes(searchTerm),
-    );
-    const filteredFacGroups = groupedByFaculty.filter(
-      (g) => !searchTerm || g.name.toLowerCase().includes(searchTerm),
-    );
-    const countLabel =
-      leaderboardTab === "individual"
-        ? `Showing ${filteredLeaderboard.length} of ${leaderboard.length} users`
-        : leaderboardTab === "department"
-          ? `${filteredDeptGroups.length} department${filteredDeptGroups.length !== 1 ? "s" : ""}`
-          : `${filteredFacGroups.length} facult${filteredFacGroups.length !== 1 ? "ies" : "y"}`;
-
-    return (
-      <div className="space-y-4 pb-20">
-        <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold">Leaderboard</h1>
-              <p className="text-sm text-green-100 mt-1">Top Eco Warriors</p>
-            </div>
-            {leaderboardTab === "individual" && (
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="px-3 py-2 bg-white/20 rounded-xl text-sm font-medium flex items-center gap-2"
-              >
-                <Filter size={14} /> Filters
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex bg-white rounded-xl p-1 border border-green-100 gap-1 shadow-sm">
-          {[
-            { key: "individual", label: "Individual" },
-            { key: "department", label: "Department" },
-            { key: "faculty", label: "Faculty" },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => {
-                setLeaderboardTab(tab.key);
-                setLeaderboardSearch("");
-                setOpenGroups({});
-                setShowFilters(false);
-              }}
-              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${leaderboardTab === tab.key ? "bg-green-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {leaderboardTab === "individual" && (
-          <AnimatePresence>
-            {showFilters && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="overflow-hidden bg-white rounded-xl border border-green-100"
-              >
-                <div className="p-4 space-y-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 mb-1 block">
-                      Department
-                    </label>
-                    <select
-                      value={selectedDepartment}
-                      onChange={(e) => setSelectedDepartment(e.target.value)}
-                      className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm"
-                    >
-                      {departmentsList.map((d) => (
-                        <option key={d} value={d}>
-                          {d === "all" ? "All Departments" : d}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 mb-1 block">
-                      Faculty
-                    </label>
-                    <select
-                      value={selectedFaculty}
-                      onChange={(e) => setSelectedFaculty(e.target.value)}
-                      className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm"
-                    >
-                      {facultiesList.map((f) => (
-                        <option key={f} value={f}>
-                          {f === "all" ? "All Faculties" : f}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setSortBy("points")}
-                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium ${sortBy === "points" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"}`}
-                    >
-                      Points
-                    </button>
-                    <button
-                      onClick={() => setSortBy("name")}
-                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium ${sortBy === "name" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"}`}
-                    >
-                      Name
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setSelectedDepartment("all");
-                      setSelectedFaculty("all");
-                      setLeaderboardSearch("");
-                      setSortBy("points");
-                    }}
-                    className="w-full py-2 text-xs text-green-600 font-medium border-t border-green-100 pt-2"
-                  >
-                    Reset Filters
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        )}
-
-        <div className="relative">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-green-400"
-          />
-          <input
-            type="text"
-            placeholder={
-              leaderboardTab === "individual"
-                ? "Search users..."
-                : leaderboardTab === "department"
-                  ? "Search departments..."
-                  : "Search faculties..."
-            }
-            value={leaderboardSearch}
-            onChange={(e) => setLeaderboardSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-3 bg-white rounded-xl border border-green-200 text-sm focus:outline-none focus:border-green-400"
-          />
-        </div>
-
-        <p className="text-xs text-gray-500 px-1">{countLabel}</p>
-
-        {leaderboardTab === "individual" && (
-          <div className="bg-white rounded-xl shadow-sm border border-green-100 overflow-hidden">
-            <div className="divide-y divide-green-50">
-              {filteredLeaderboard.length === 0 ? (
-                <div className="p-12 text-center">
-                  <Trophy size={48} className="mx-auto text-gray-300 mb-3" />
-                  <p className="text-gray-500">No users found</p>
-                </div>
-              ) : (
-                filteredLeaderboard.map((user, idx) => {
-                  const rank = idx + 1;
-                  const isCurrentUser = user.uid === currentUser?.uid;
-                  return (
-                    <div
-                      key={user.uid}
-                      onClick={() => {
-                        setSelectedUser(user);
-                        setShowUserModal(true);
-                      }}
-                      className={`px-4 py-3 flex items-center gap-3 cursor-pointer transition-colors ${isCurrentUser ? "bg-green-50" : "hover:bg-green-50/30"}`}
-                    >
-                      <div className="flex items-center gap-1 w-10 shrink-0">
-                        {getRankIcon(rank)}
-                        <div
-                          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${getRankBadge(rank)}`}
-                        >
-                          {rank > 3 ? rank : null}
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 text-sm truncate">
-                          {user.fullname || "Anonymous"}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {user.department || user.faculty || "Student"}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-bold text-green-600 text-sm">
-                          {user.ecoPoints || 0}
-                        </p>
-                        <p className="text-[10px] text-gray-400">pts</p>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-
-        {leaderboardTab === "department" && renderGroupList(filteredDeptGroups)}
-        {leaderboardTab === "faculty" && renderGroupList(filteredFacGroups)}
-      </div>
-    );
-  };
-
-  // ── Render Events ──
+  // ── Render Events (FIXED - No NaN) ──
   const renderEvents = () => (
     <div className="space-y-4 pb-20">
       <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white shadow-lg">
@@ -1612,114 +1452,90 @@ const MobileLayout = () => {
           Join & earn 25 points per event
         </p>
       </div>
-      {upcomingEvents.map((event) => {
-        const hasJoined = event.participants?.includes(currentUser?.uid);
-        const isFull =
-          event.maxParticipants > 0 &&
-          event.participants?.length >= event.maxParticipants;
-        const isJoining = joiningEventId === event.id;
-        return (
-          <div
-            key={event.id}
-            className="bg-white rounded-xl shadow-sm border border-green-100 p-4"
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-14 h-14 bg-green-50 rounded-xl flex flex-col items-center justify-center shrink-0">
-                <span className="text-xl font-bold text-green-700">
-                  {event.date ? new Date(event.date).getDate() : "?"}
-                </span>
-                <span className="text-[10px] text-green-500">
-                  {event.date
-                    ? new Date(event.date).toLocaleString("default", {
-                        month: "short",
-                      })
-                    : ""}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-gray-900 truncate">
-                  {event.title}
-                </h3>
-                <p className="text-xs text-gray-500 mt-1 truncate">
-                  {event.location}
-                </p>
-                <div className="flex items-center justify-between mt-2">
-                  <p className="text-xs text-gray-400">
-                    {event.participants?.length || 0}
-                    {event.maxParticipants
-                      ? ` / ${event.maxParticipants}`
-                      : ""}{" "}
-                    participants
-                  </p>
-                  {!hasJoined && !isFull && currentUser && (
-                    <button
-                      onClick={() => handleJoinEvent(event.id)}
-                      disabled={isJoining}
-                      className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-lg font-medium active:scale-95 disabled:opacity-50 hover:bg-green-700 transition-colors"
-                    >
-                      {isJoining ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        "Join →"
-                      )}
-                    </button>
-                  )}
-                  {hasJoined && (
-                    <span className="px-4 py-1.5 bg-green-100 text-green-700 text-sm rounded-lg font-medium">
-                      ✓ Joined
-                    </span>
-                  )}
-                  {isFull && !hasJoined && (
-                    <span className="px-4 py-1.5 bg-gray-100 text-gray-500 text-sm rounded-lg font-medium">
-                      Full
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-      {upcomingEvents.length === 0 && (
+      {upcomingEvents.length === 0 ? (
         <div className="bg-white rounded-xl p-12 text-center border border-green-100">
           <Calendar size={48} className="mx-auto text-green-300 mb-3" />
           <p className="text-gray-500">No upcoming events</p>
         </div>
+      ) : (
+        upcomingEvents.map((event) => {
+          const hasJoined = event.participants?.includes(currentUser?.uid);
+          const isFull =
+            event.maxParticipants > 0 &&
+            event.participants?.length >= event.maxParticipants;
+          const isJoining = joiningEventId === event.id;
+          const dateInfo = formatEventDate(event.date);
+
+          return (
+            <div
+              key={event.id}
+              className="bg-white rounded-xl shadow-sm border border-green-100 p-4"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-14 h-14 bg-green-50 rounded-xl flex flex-col items-center justify-center shrink-0">
+                  <span className="text-xl font-bold text-green-700">
+                    {dateInfo.day}
+                  </span>
+                  <span className="text-[10px] text-green-500">
+                    {dateInfo.month}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-900 truncate">
+                    {event.title}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1 truncate">
+                    {event.location}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {dateInfo.formatted} •{" "}
+                    {safeNumber(event.participants?.length, 0)} participants
+                  </p>
+                  <div className="flex items-center justify-between mt-2">
+                    {!hasJoined && !isFull && currentUser && (
+                      <button
+                        onClick={() => handleJoinEvent(event.id)}
+                        disabled={isJoining}
+                        className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-lg font-medium active:scale-95 disabled:opacity-50 hover:bg-green-700 transition-colors"
+                      >
+                        {isJoining ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          "Join →"
+                        )}
+                      </button>
+                    )}
+                    {hasJoined && (
+                      <span className="px-4 py-1.5 bg-green-100 text-green-700 text-sm rounded-lg font-medium">
+                        ✓ Joined
+                      </span>
+                    )}
+                    {isFull && !hasJoined && (
+                      <span className="px-4 py-1.5 bg-gray-100 text-gray-500 text-sm rounded-lg font-medium">
+                        Full
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })
       )}
     </div>
   );
 
-  // ── Render Content - FIXED with all routes ──
+  // ── Render Content ──
   const renderContent = () => {
     const path = location.pathname;
-
-    // Dashboard routes
-    if (path === "/dashboard" || path === "/") {
-      return renderDashboard();
-    }
-    if (path === "/dashboard/marketplace") {
-      return renderMarketplace();
-    }
-    if (path === "/dashboard/leaderboard") {
-      return renderLeaderboard();
-    }
-    if (path === "/dashboard/events") {
-      return renderEvents();
-    }
-    if (path === "/dashboard/profile") {
-      return <MobileProfile />;
-    }
-    if (path === "/dashboard/admin") {
-      return <AdminPanel />;
-    }
-    if (path === "/dashboard/verify") {
-      return <VerifyRecycling />;
-    }
-    if (path === "/dashboard/waste-report") {
-      return <WasteReport />;
-    }
-
-    // Fallback to dashboard
+    if (path === "/dashboard" || path === "/") return renderDashboard();
+    if (path === "/dashboard/marketplace") return renderMarketplace();
+    if (path === "/dashboard/leaderboard") return renderLeaderboard();
+    if (path === "/dashboard/events") return renderEvents();
+    if (path === "/dashboard/profile") return <MobileProfile />;
+    if (path === "/dashboard/admin") return <AdminPanel />;
+    if (path === "/dashboard/verify") return <VerifyRecycling />;
+    if (path === "/dashboard/waste-report") return <WasteReport />;
     return renderDashboard();
   };
 
@@ -1733,7 +1549,6 @@ const MobileLayout = () => {
 
   return (
     <div className="min-h-screen bg-green-50">
-      {/* Splash Screen */}
       <AnimatePresence>
         {showSplash && (
           <motion.div
@@ -1759,7 +1574,6 @@ const MobileLayout = () => {
         )}
       </AnimatePresence>
 
-      {/* Header */}
       <header
         className={`fixed top-0 left-0 right-0 z-40 transition-shadow duration-200 bg-white border-b border-green-100 ${scrolled ? "shadow-md" : ""}`}
       >
@@ -1846,14 +1660,13 @@ const MobileLayout = () => {
             </div>
             <div className="px-2 py-1 bg-green-100 rounded-full">
               <span className="text-xs font-medium text-green-700">
-                {userProfile?.ecoPoints || 0}
+                {safeNumber(userProfile?.ecoPoints, 0)}
               </span>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Sidebar */}
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -1863,12 +1676,10 @@ const MobileLayout = () => {
         onLogout={handleLogout}
         onGoHome={handleGoHome}
       />
-
       <main className="pt-16 pb-20">
         <div className="px-4 py-4">{renderContent()}</div>
       </main>
 
-      {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-green-100 shadow-lg z-40">
         <div className="flex items-center justify-around px-2 py-2">
           {bottomNavItems.map((item) => {
@@ -1887,7 +1698,6 @@ const MobileLayout = () => {
         </div>
       </nav>
 
-      {/* FAB */}
       <button
         onClick={() => setShowScanner(true)}
         className="fixed bottom-24 right-4 z-30 w-14 h-14 bg-green-600 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-transform"
@@ -2163,7 +1973,7 @@ const MobileLayout = () => {
                   </div>
                 </div>
                 <span className="text-xl font-bold text-green-600">
-                  +{selectedItem.ecoValue} pts
+                  +{safeNumber(selectedItem.ecoValue, 5)} pts
                 </span>
               </div>
               <p className="text-gray-600 mb-4 text-sm">

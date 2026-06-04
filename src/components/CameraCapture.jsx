@@ -1,6 +1,7 @@
 // src/components/CameraCapture.jsx
 import { useRef, useState, useEffect } from "react";
 import { Camera, RefreshCw, X, Loader2, AlertTriangle } from "lucide-react";
+import toast from "react-hot-toast";
 
 export default function CameraCapture({ onCapture, onClose }) {
   const videoRef = useRef(null);
@@ -9,147 +10,171 @@ export default function CameraCapture({ onCapture, onClose }) {
   const [cameraError, setCameraError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [hasCamera, setHasCamera] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
 
   const stopCamera = () => {
     if (videoRef.current && videoRef.current.srcObject) {
       const tracks = videoRef.current.srcObject.getTracks();
-      tracks.forEach((track) => track.stop());
+      tracks.forEach((track) => {
+        track.stop();
+        track.enabled = false;
+      });
       videoRef.current.srcObject = null;
     }
     setStreaming(false);
+  };
+
+  // Check if we're in a WebView/AppCreator24 environment
+  const isWebView = () => {
+    const ua = navigator.userAgent.toLowerCase();
+    return (
+      ua.includes("webview") ||
+      ua.includes("wv") ||
+      ua.includes("appcreator24") ||
+      window.location.href.includes("file://") ||
+      ua.includes("android") // Android WebView often identifies as Android
+    );
+  };
+
+  // Try multiple camera constraints progressively
+  const tryCameraConstraints = async (attempt = 0) => {
+    const constraintsList = [
+      // Attempt 0: Simple video only (most compatible)
+      { video: true },
+      // Attempt 1: With facing mode preferred
+      { video: { facingMode: facingMode } },
+      // Attempt 2: With exact facing mode
+      { video: { facingMode: { exact: facingMode } } },
+      // Attempt 3: Low resolution
+      { video: { width: { ideal: 640 }, height: { ideal: 480 } } },
+      // Attempt 4: Front camera only
+      { video: { facingMode: "user" } },
+      // Attempt 5: Back camera only
+      { video: { facingMode: "environment" } },
+    ];
+
+    for (let i = attempt; i < constraintsList.length; i++) {
+      try {
+        console.log(`Trying camera constraint ${i + 1}:`, constraintsList[i]);
+        const stream = await navigator.mediaDevices.getUserMedia(
+          constraintsList[i],
+        );
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          return new Promise((resolve) => {
+            videoRef.current.onloadedmetadata = () => {
+              videoRef.current
+                .play()
+                .then(() => {
+                  console.log(
+                    "Camera started successfully with constraint",
+                    i + 1,
+                  );
+                  setStreaming(true);
+                  setLoading(false);
+                  resolve(true);
+                })
+                .catch((err) => {
+                  console.error("Video play error:", err);
+                  resolve(false);
+                });
+            };
+          });
+        }
+        return true;
+      } catch (error) {
+        console.log(`Constraint ${i + 1} failed:`, error.name);
+        if (
+          error.name === "NotAllowedError" ||
+          error.name === "PermissionDeniedError"
+        ) {
+          setPermissionDenied(true);
+          setCameraError(
+            "Camera permission denied. Please enable in app settings.",
+          );
+          setLoading(false);
+          return false;
+        }
+        // Continue to next constraint
+      }
+    }
+    return false;
   };
 
   const startCamera = async () => {
     setLoading(true);
     setCameraError(null);
     setPermissionDenied(false);
-
     stopCamera();
 
-    // Define progressive constraints from most specific to most compatible
-    const constraintsList = [
-      // Try 1: Exact facing mode with HD
-      {
-        video: {
-          facingMode: { exact: facingMode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      },
-      // Try 2: Facing mode preferred (not exact)
-      {
-        video: {
-          facingMode: facingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      },
-      // Try 3: Facing mode with lower resolution
-      {
-        video: {
-          facingMode: facingMode,
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-        },
-      },
-      // Try 4: Just facing mode without resolution constraints
-      {
-        video: {
-          facingMode: facingMode,
-        },
-      },
-      // Try 5: Any camera (no facing mode)
-      {
-        video: true,
-      },
-      // Try 6: Minimal constraints
-      {
-        video: {
-          width: { min: 320, ideal: 640 },
-          height: { min: 240, ideal: 480 },
-        },
-      },
-    ];
+    // Small delay to ensure clean state
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
-    for (let i = 0; i < constraintsList.length; i++) {
-      try {
-        const constraints = constraintsList[i];
-        console.log(`Trying camera constraint ${i + 1}:`, constraints);
+    const success = await tryCameraConstraints(retryCount);
 
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current.play();
-            setStreaming(true);
-            setLoading(false);
-            console.log("Camera started successfully with constraint", i + 1);
-          };
-        }
-        return; // Success - exit the function
-      } catch (error) {
-        console.log(`Constraint ${i + 1} failed:`, error.name);
-        // Continue to next constraint
-      }
-    }
-
-    // All attempts failed - check if it's a permission issue
-    try {
-      // Last resort: check if we can get any camera at all
-      const testStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-      });
-      testStream.getTracks().forEach((track) => track.stop());
+    if (!success && !permissionDenied) {
       setCameraError(
-        "Camera found but unable to configure. Try restarting the app.",
+        "Unable to access camera. Please check permissions and try again.",
       );
-    } catch (err) {
-      if (
-        err.name === "NotAllowedError" ||
-        err.name === "PermissionDeniedError"
-      ) {
-        setPermissionDenied(true);
-        setCameraError(
-          "Camera permission denied. Please enable in app settings.",
-        );
-      } else if (err.name === "NotFoundError") {
-        setCameraError("No camera found on this device.");
-      } else {
-        setCameraError("Unable to access camera. Please check permissions.");
-      }
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
-  const switchCamera = async () => {
+  const switchCamera = () => {
+    if (isWebView()) {
+      toast.error("Camera switching may not work in this app");
+      // Still try to switch
+    }
+    stopCamera();
     const newMode = facingMode === "user" ? "environment" : "user";
     setFacingMode(newMode);
-    // Small delay before restarting camera
-    setTimeout(() => {
-      startCamera();
-    }, 300);
+    setRetryCount(0);
+    setTimeout(() => startCamera(), 200);
   };
 
   const capture = () => {
-    if (!videoRef.current || !streaming) return;
+    if (!videoRef.current || !streaming) {
+      toast.error("Camera not ready. Please wait.");
+      return;
+    }
 
+    const video = videoRef.current;
     const canvas = document.createElement("canvas");
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    const context = canvas.getContext("2d");
-    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
 
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    if (canvas.width === 0 || canvas.height === 0) {
+      toast.error("Camera not ready. Please try again.");
+      return;
+    }
+
+    const context = canvas.getContext("2d");
+    // Apply mirror effect for front camera
+    if (facingMode === "user") {
+      context.translate(canvas.width, 0);
+      context.scale(-1, 1);
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Convert to JPEG blob
     canvas.toBlob(
       (blob) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          onCapture(reader.result);
-          stopCamera();
-          onClose();
-        };
-        reader.readAsDataURL(blob);
+        if (blob) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            onCapture(reader.result);
+            stopCamera();
+            onClose();
+            toast.success("Photo captured successfully!");
+          };
+          reader.readAsDataURL(blob);
+        } else {
+          toast.error("Failed to capture photo");
+        }
       },
       "image/jpeg",
       0.9,
@@ -161,10 +186,34 @@ export default function CameraCapture({ onCapture, onClose }) {
     if (onClose) onClose();
   };
 
+  const retryWithDifferentSettings = () => {
+    setRetryCount((prev) => prev + 1);
+    startCamera();
+  };
+
   useEffect(() => {
     startCamera();
-    return () => stopCamera();
+    return () => {
+      stopCamera();
+    };
   }, [facingMode]);
+
+  // If no camera is available, show a message
+  if (!hasCamera && cameraError) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-6">
+        <AlertTriangle size={64} className="text-yellow-400 mb-4" />
+        <h2 className="text-white text-xl font-bold mb-2">No Camera Found</h2>
+        <p className="text-gray-300 text-center mb-6">{cameraError}</p>
+        <button
+          onClick={handleClose}
+          className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium"
+        >
+          Close
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
@@ -194,6 +243,9 @@ export default function CameraCapture({ onCapture, onClose }) {
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10">
             <Loader2 size={48} className="text-white animate-spin" />
             <p className="text-white mt-3 text-sm">Starting camera...</p>
+            <p className="text-white/50 text-xs mt-2">
+              Please allow camera permission
+            </p>
           </div>
         )}
 
@@ -203,34 +255,36 @@ export default function CameraCapture({ onCapture, onClose }) {
             <p className="text-white text-center mb-4">{cameraError}</p>
             {permissionDenied && (
               <div className="text-center mb-4 p-3 bg-yellow-500/20 rounded-lg max-w-xs">
-                <p className="text-yellow-300 text-sm mb-2">
-                  📱 To enable camera:
+                <p className="text-yellow-300 text-sm mb-2 font-semibold">
+                  📱 How to enable camera:
                 </p>
                 <p className="text-white text-xs">
-                  1. Close this app
+                  1. Close this app completely
                   <br />
                   2. Go to Phone Settings → Apps → GreenLoop
                   <br />
-                  3. Tap Permissions → Enable Camera
+                  3. Tap Permissions → Camera
                   <br />
-                  4. Restart the app
+                  4. Select "Allow"
+                  <br />
+                  5. Restart the app
                 </p>
               </div>
             )}
-            <button
-              onClick={startCamera}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg active:bg-green-700"
-            >
-              Try Again
-            </button>
-            {permissionDenied && (
+            <div className="flex gap-3">
+              <button
+                onClick={retryWithDifferentSettings}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg active:bg-green-700"
+              >
+                Try Again
+              </button>
               <button
                 onClick={handleClose}
-                className="mt-3 px-6 py-2 bg-gray-600 text-white rounded-lg active:bg-gray-700"
+                className="px-6 py-2 bg-gray-600 text-white rounded-lg active:bg-gray-700"
               >
                 Close
               </button>
-            )}
+            </div>
           </div>
         )}
 
@@ -240,6 +294,7 @@ export default function CameraCapture({ onCapture, onClose }) {
           playsInline
           autoPlay
           muted
+          style={{ transform: facingMode === "user" ? "scaleX(-1)" : "none" }}
         />
       </div>
 
@@ -248,11 +303,20 @@ export default function CameraCapture({ onCapture, onClose }) {
         <button
           onClick={capture}
           disabled={!streaming || loading}
-          className="w-20 h-20 rounded-full bg-white border-4 border-green-500 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 shadow-lg"
+          className="w-20 h-20 rounded-full bg-white border-4 border-green-500 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 shadow-lg hover:bg-gray-100"
         >
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-500 to-green-600 mx-auto" />
         </button>
       </div>
+
+      {/* Instructions for users */}
+      {!streaming && !loading && !cameraError && (
+        <div className="absolute bottom-32 left-0 right-0 text-center">
+          <p className="text-white/70 text-xs bg-black/50 py-2 px-4 rounded-full inline-block mx-auto">
+            Tap "Allow" when prompted for camera access
+          </p>
+        </div>
+      )}
     </div>
   );
 }

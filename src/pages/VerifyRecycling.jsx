@@ -30,7 +30,58 @@ import { firebaseService } from "../services/firebaseService";
 import { geminiService } from "../services/geminiService";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
-import CameraCapture from "../components/CameraCapture";
+
+// Simple camera component using file input (reliable for all environments)
+const SimpleCameraCapture = ({ onCapture, onClose }) => {
+  const cameraInputRef = React.useRef(null);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Image must be less than 5MB");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        onCapture(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+      <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+        <h3 className="text-lg font-bold text-gray-900 mb-4">Take a Photo</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Tap below to open your camera
+        </p>
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <button
+          onClick={() => cameraInputRef.current?.click()}
+          className="w-full py-3 bg-green-600 text-white rounded-lg font-medium mb-3 flex items-center justify-center gap-2"
+        >
+          <Camera size={18} /> Open Camera
+        </button>
+        <button
+          onClick={onClose}
+          className="w-full py-3 bg-gray-200 text-gray-700 rounded-lg font-medium"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const VerifyRecycling = () => {
   const { currentUser, userProfile } = useAuth();
@@ -66,7 +117,6 @@ const VerifyRecycling = () => {
 
   const handleCameraCapture = (imageData) => {
     setImagePreview(imageData);
-    // Convert base64 to file
     fetch(imageData)
       .then((res) => res.blob())
       .then((blob) => {
@@ -74,70 +124,19 @@ const VerifyRecycling = () => {
           type: "image/jpeg",
         });
         setImageFile(file);
-      });
+      })
+      .catch((err) => console.error("Error converting image:", err));
     setShowCamera(false);
   };
 
-  // Generate comprehensive sustainability content using Gemini AI
-  const generateGeminiContent = async (analysis) => {
-    const material = analysis.material || "item";
-    const recyclable = analysis.recyclable
-      ? "recyclable"
-      : "not easily recyclable";
-
-    const prompt = `As a sustainability expert, generate a JSON response about ${material} waste that is ${recyclable}. Use this exact structure:
-    {
-      "environmentalImpact": "2-3 sentences on carbon, water, landfill impact",
-      "societalBenefits": "2-3 sentences on jobs, communities, future benefits", 
-      "tipsForAction": "5 specific recycling tips as bullet points",
-      "funFact": "1 surprising fact to motivate recycling",
-      "upcycleIdeas": "4 creative reuse ideas as array",
-      "carbonSavings": "number in kg CO2 saved per item",
-      "waterSavings": "number in liters saved",
-      "energySavings": "number in kWh saved", 
-      "decompositionTime": "time to decompose in landfill",
-      "communityImpact": "2 sentences on campus/community benefits"
-    }
-    Use real statistics. Be inspiring and educational.`;
-
-    try {
-      const response = await geminiService.generateContent(prompt);
-      const parsed = JSON.parse(response);
-      return {
-        environmentalImpact:
-          parsed.environmentalImpact ||
-          generateFallbackContent(material).environmentalImpact,
-        societalBenefits:
-          parsed.societalBenefits ||
-          generateFallbackContent(material).societalBenefits,
-        tipsForAction:
-          parsed.tipsForAction ||
-          generateFallbackContent(material).tipsForAction,
-        funFact: parsed.funFact || generateFallbackContent(material).funFact,
-        upcycleIdeas:
-          parsed.upcycleIdeas || generateFallbackContent(material).upcycleIdeas,
-        carbonSavings: parsed.carbonSavings || 0.5,
-        waterSavings: parsed.waterSavings || 3,
-        energySavings: parsed.energySavings || 1.5,
-        decompositionTime: parsed.decompositionTime || "Varies by material",
-        communityImpact:
-          parsed.communityImpact ||
-          generateFallbackContent(material).communityImpact,
-      };
-    } catch (error) {
-      console.error("Gemini generation error:", error);
-      return generateFallbackContent(material);
-    }
-  };
-
-  // Fallback content (concise but comprehensive)
   const generateFallbackContent = (material) => {
+    const materialLower = material.toLowerCase();
     const defaults = {
       plastic: {
         environmentalImpact:
-          "♻️ Plastic takes 400+ years to decompose, releasing toxins. Recycling saves 0.5kg CO₂, 6L water, and enough energy to power a laptop for 25 hours!",
+          "♻️ Plastic takes 400+ years to decompose. Recycling saves 0.5kg CO₂, 6L water!",
         societalBenefits:
-          "Plastic recycling creates 40,000+ US jobs and keeps materials in the circular economy, protecting vulnerable communities from pollution.",
+          "Plastic recycling creates 40,000+ US jobs and protects communities from pollution.",
         tipsForAction:
           "1. Rinse containers\n2. Remove caps\n3. Flatten bottles\n4. No plastic bags\n5. Check #1-7 codes",
         funFact: "One recycled bottle powers a 60W bulb for 6 hours!",
@@ -147,14 +146,17 @@ const VerifyRecycling = () => {
           "Bird feeders",
           "Woven tote bags",
         ],
-        communityImpact:
-          "Your recycling helps [University] save $50/ton in disposal costs and inspires 30% more people to recycle!",
+        carbonSavings: 0.5,
+        waterSavings: 6,
+        energySavings: 2.5,
+        decompositionTime: "400+ years",
+        communityImpact: "Your recycling helps save $50/ton in disposal costs!",
       },
       glass: {
         environmentalImpact:
-          "Glass is 100% recyclable forever! Recycling saves 0.3kg CO₂, 1.5L water, and uses 40% less energy than new production.",
+          "Glass is 100% recyclable forever! Recycling saves 0.3kg CO₂, 1.5L water.",
         societalBenefits:
-          "Glass recycling supports 20,000+ jobs, reduces mining by 1.2 tons per ton recycled, and lowers factory emissions by 20%.",
+          "Glass recycling supports 20,000+ jobs and reduces mining by 1.2 tons per ton.",
         tipsForAction:
           "1. Rinse containers\n2. Remove metal lids\n3. Don't break glass\n4. Separate by color\n5. No mirrors/Pyrex",
         funFact:
@@ -165,32 +167,38 @@ const VerifyRecycling = () => {
           "Mason jar salads",
           "Candle holders",
         ],
-        communityImpact:
-          "Campus glass recycling saves $5,000 annually and earns 'Eco Ambassador' recognition!",
+        carbonSavings: 0.3,
+        waterSavings: 1.5,
+        energySavings: 1.2,
+        decompositionTime: "1,000,000+ years",
+        communityImpact: "Campus glass recycling saves $5,000 annually!",
       },
       paper: {
         environmentalImpact:
-          "Recycling 1 ton of paper saves 17 trees, 7,000 gallons water, and 4,100 kWh - enough to power a home for 6 months!",
+          "Recycling 1 ton of paper saves 17 trees, 7,000 gallons water!",
         societalBenefits:
-          "Paper recycling employs 140,000+ Americans, preserves forests that absorb CO₂, and saves 3.3 cubic yards of landfill space per ton.",
+          "Paper recycling employs 140,000+ Americans and saves 3.3 cubic yards of landfill space.",
         tipsForAction:
           "1. Remove plastic windows\n2. Flatten cardboard\n3. Keep dry\n4. Remove tape/staples\n5. No shredded paper",
-        funFact:
-          "Paper can be recycled 5-7 times! The average American uses 7 trees worth of paper yearly.",
+        funFact: "Paper can be recycled 5-7 times!",
         upcycleIdeas: [
           "Handmade paper",
           "Paper bead jewelry",
           "Storage organizers",
           "Paper mache art",
         ],
+        carbonSavings: 0.4,
+        waterSavings: 7,
+        energySavings: 2.8,
+        decompositionTime: "2-5 weeks",
         communityImpact:
-          "Campus paper recycling has diverted 30 tons this year - enough to save 510 trees!",
+          "Campus paper recycling has diverted 30 tons this year!",
       },
       metal: {
         environmentalImpact:
-          "Recycling aluminum saves 95% energy! One can saves enough energy to run a TV for 3 hours. Mining creates 7 tons waste per ton of metal.",
+          "Recycling aluminum saves 95% energy! One can saves enough energy to run a TV for 3 hours.",
         societalBenefits:
-          "Metal recycling employs 500,000+ Americans, generates $100B annually, and keeps 200B cans from landfills since 1972!",
+          "Metal recycling employs 500,000+ Americans and keeps 200B cans from landfills!",
         tipsForAction:
           "1. Rinse cans\n2. Crush to save space\n3. Leave labels on\n4. Remove plastic parts\n5. Test with magnet",
         funFact: "A recycled aluminum can returns to shelves in just 60 days!",
@@ -200,58 +208,34 @@ const VerifyRecycling = () => {
           "Magnetic board",
           "Candle holders",
         ],
-        communityImpact:
-          "Campus earns $2,000+ from can recycling - join the 'Can Challenge' competition!",
-      },
-      electronic: {
-        environmentalImpact:
-          "E-waste is fastest-growing waste stream. One million recycled laptops power 3,500 homes yearly! Gold in e-waste is 40-800x richer than ore.",
-        societalBenefits:
-          "E-waste recycling creates 3x more jobs than landfilling and refurbishes devices for schools and families in need.",
-        tipsForAction:
-          "1. NEVER trash electronics\n2. Factory reset\n3. Remove batteries\n4. Find certified recyclers\n5. Check manufacturer take-back",
-        funFact:
-          "Your old phone contains gold, silver, and copper! Only 15% get recycled properly.",
-        upcycleIdeas: [
-          "Music player",
-          "Security camera",
-          "Circuit board art",
-          "External hard drive",
-        ],
-        communityImpact:
-          "Campus collected 5,000+ lbs of e-waste last year - your device can provide computer access to a student!",
-      },
-      textile: {
-        environmentalImpact:
-          "Fashion produces 10% of global carbon emissions! Recycling saves 2,500L water per item - enough drinking water for 2.5 years.",
-        societalBenefits:
-          "Textile recycling creates jobs and provides affordable clothing to millions. Every pound recycled prevents 3.6 lbs of CO₂.",
-        tipsForAction:
-          "1. Donate wearable clothes\n2. Cut old shirts into rags\n3. Host clothing swaps\n4. Find textile bins\n5. Compost natural fibers",
-        funFact:
-          "Recycling 10% of US clothing would remove 250,000 cars' worth of CO₂ emissions!",
-        upcycleIdeas: ["Tote bags", "Quilts", "Braided rugs", "Pillow covers"],
-        communityImpact:
-          "Campus 'Swap 'n' Shop' diverts 2,000+ clothing items annually from landfills!",
+        carbonSavings: 1.2,
+        waterSavings: 15,
+        energySavings: 15,
+        decompositionTime: "200-500 years",
+        communityImpact: "Campus earns $2,000+ from can recycling!",
       },
     };
+
     return (
-      defaults[material.toLowerCase()] || {
-        environmentalImpact: `Every ${material} recycled fights climate change! Recycling saves resources, reduces landfill waste, and lowers carbon emissions.`,
+      defaults[materialLower] || {
+        environmentalImpact: `Every ${material} recycled fights climate change!`,
         societalBenefits:
-          "Recycling creates jobs, protects communities, and builds a sustainable future for everyone.",
+          "Recycling creates jobs and builds a sustainable future.",
         tipsForAction:
-          "1. Clean items\n2. Check local rules\n3. Reduce & Reuse first\n4. Buy recycled products\n5. Spread awareness",
-        funFact:
-          "Recycling one ton of waste saves 1,000-2,000 kg CO₂ - like planting 25-50 trees!",
+          "1. Clean items\n2. Check local rules\n3. Reduce & Reuse first",
+        funFact: "Recycling one ton of waste saves 1,000-2,000 kg CO₂!",
         upcycleIdeas: [
           "Home decor",
           "Storage solutions",
           "Art projects",
-          "Donation to makerspaces",
+          "Donation",
         ],
+        carbonSavings: 0.5,
+        waterSavings: 3,
+        energySavings: 1.5,
+        decompositionTime: "Varies by material",
         communityImpact:
-          "Every recycled item helps campus achieve zero-waste goals and inspires others to take action!",
+          "Every recycled item helps campus achieve zero-waste goals!",
       }
     );
   };
@@ -261,7 +245,9 @@ const VerifyRecycling = () => {
     setAnalyzing(true);
     try {
       const result = await geminiService.analyzeWasteImage(imageFile);
-      const sustainabilityContent = await generateGeminiContent(result);
+      const sustainabilityContent = generateFallbackContent(
+        result.material || "item",
+      );
       setAnalysis({ ...result, ...sustainabilityContent });
       setSelectedStatus(result.status || "Recycled");
       setFormData({
@@ -278,59 +264,86 @@ const VerifyRecycling = () => {
     }
   };
 
+  // FIXED: handleSubmit with better error handling
   const handleSubmit = async () => {
-    if (!selectedStatus)
-      return toast.error("Please select a verification status");
-    if (!formData.itemName || !formData.description)
-      return toast.error("Please fill in all fields");
+    // Validate required fields
+    if (!selectedStatus) {
+      toast.error("Please select a verification status");
+      return;
+    }
+    if (!formData.itemName || !formData.itemName.trim()) {
+      toast.error("Please enter an item name");
+      return;
+    }
+    if (!formData.description || !formData.description.trim()) {
+      toast.error("Please enter a description");
+      return;
+    }
 
     setSubmitting(true);
+    const loadingToast = toast.loading("Saving your verification...");
+
     try {
+      // Prepare verification data
+      const verificationData = {
+        userId: currentUser.uid,
+        userName: userProfile?.fullname || "Student",
+        itemName: formData.itemName.trim(),
+        description: formData.description.trim(),
+        category: formData.category || analysis?.material || "Recycled Item",
+        aiClassification: analysis?.material || null,
+        confidence: analysis?.confidence || null,
+        selectedStatus,
+        ecoPointsAwarded: analysis?.ecoPoints || 10,
+        recyclable: analysis?.recyclable ?? true,
+        upcycleIdeas: analysis?.upcycleIdeas || [],
+        environmentalImpact:
+          analysis?.environmentalImpact ||
+          "Recycling this item helps reduce waste and save resources.",
+        carbonSavings: analysis?.carbonSavings || 0.5,
+        waterSavings: analysis?.waterSavings || 3,
+        energySavings: analysis?.energySavings || 1.5,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Create verification report (image upload will be handled with error tolerance)
       await firebaseService.createVerificationReport(
-        {
-          userId: currentUser.uid,
-          userName: userProfile?.fullname || "Student",
-          itemName: formData.itemName,
-          description: formData.description,
-          category: formData.category,
-          aiClassification: analysis?.material,
-          confidence: analysis?.confidence,
-          selectedStatus,
-          ecoPointsAwarded: analysis?.ecoPoints || 10,
-          recyclable: analysis?.recyclable,
-          upcycleIdeas: analysis?.upcycleIdeas,
-          environmentalImpact: analysis?.environmentalImpact,
-          carbonSavings: analysis?.carbonSavings,
-          waterSavings: analysis?.waterSavings,
-          energySavings: analysis?.energySavings,
-        },
+        verificationData,
         imageFile,
       );
-      await firebaseService.updateUserPoints(
-        currentUser.uid,
-        analysis?.ecoPoints || 10,
-      );
 
+      // Update user points
+      const pointsEarned = analysis?.ecoPoints || 10;
+      await firebaseService.updateUserPoints(currentUser.uid, pointsEarned);
+
+      // Dismiss loading toast
+      toast.dismiss(loadingToast);
+
+      // Show success message with details
       toast.success(
         (t) => (
           <div className="flex flex-col gap-1">
             <div className="font-bold">🎉 Verification Submitted!</div>
-            <div>+{analysis?.ecoPoints || 10} Eco Points</div>
+            <div>+{pointsEarned} Eco Points</div>
             <div className="text-xs">
-              🌍 Saved {analysis?.carbonSavings}kg CO₂
+              🌍 Saved {verificationData.carbonSavings}kg CO₂
             </div>
             <div className="text-xs">
-              💧 Saved {analysis?.waterSavings}L water
+              💧 Saved {verificationData.waterSavings}L water
             </div>
           </div>
         ),
         { duration: 5000 },
       );
 
-      setTimeout(() => navigate("/dashboard"), 2000);
+      // Navigate back to dashboard after delay
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 2000);
     } catch (error) {
       console.error("Submission error:", error);
-      toast.error("Failed to submit verification");
+      toast.dismiss(loadingToast);
+      toast.error("Failed to submit verification. Please try again.");
       setSubmitting(false);
     }
   };
@@ -390,8 +403,7 @@ const VerifyRecycling = () => {
                   onClick={() => setShowCamera(true)}
                   className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition-colors flex items-center gap-2"
                 >
-                  <Camera size={14} />
-                  Take Photo
+                  <Camera size={14} /> Take Photo
                 </button>
               </div>
             </div>
@@ -540,7 +552,7 @@ const VerifyRecycling = () => {
               </div>
 
               {/* Upcycling Ideas */}
-              {analysis.upcycleIdeas && (
+              {analysis.upcycleIdeas && analysis.upcycleIdeas.length > 0 && (
                 <div className="bg-white rounded-xl border border-green-200 overflow-hidden">
                   <button
                     onClick={() => toggleSection("upcycle")}
@@ -624,7 +636,7 @@ const VerifyRecycling = () => {
                   onChange={(e) =>
                     setFormData({ ...formData, itemName: e.target.value })
                   }
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-green-500"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-green-500 focus:border-green-500"
                   placeholder="Item Name *"
                   required
                 />
@@ -633,7 +645,7 @@ const VerifyRecycling = () => {
                   onChange={(e) =>
                     setFormData({ ...formData, description: e.target.value })
                   }
-                  className="w-full px-4 py-2 border rounded-lg resize-none"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-green-500 focus:border-green-500 resize-none"
                   rows="3"
                   placeholder="How did you recycle/upcycle this item? *"
                   required
@@ -657,7 +669,7 @@ const VerifyRecycling = () => {
                 <button
                   onClick={handleSubmit}
                   disabled={submitting}
-                  className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
                     <>
@@ -687,8 +699,8 @@ const VerifyRecycling = () => {
               </h4>
               <p className="text-xs text-blue-700">
                 Our AI analyzes waste items and provides environmental impact
-                data, recycling tips, and upcycling ideas. Each verified item
-                earns points for sustainability progress!
+                data. Each verified item earns points for sustainability
+                progress!
               </p>
             </div>
           </div>
@@ -697,7 +709,7 @@ const VerifyRecycling = () => {
 
       {/* Camera Modal */}
       {showCamera && (
-        <CameraCapture
+        <SimpleCameraCapture
           onCapture={handleCameraCapture}
           onClose={() => setShowCamera(false)}
         />
