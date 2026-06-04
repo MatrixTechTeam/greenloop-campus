@@ -1,177 +1,154 @@
 // src/pages/AuthCallback.jsx
-// This page lives on your hosted site (e.g. https://yourapp.vercel.app/auth-callback)
-// It is opened in Chrome by the APK, completes Google sign-in, then saves
-// the auth token to Firestore so the APK can pick it up.
-
-import React, { useEffect, useState } from "react";
-import { getRedirectResult, signInWithRedirect, signOut } from "firebase/auth";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { auth, db } from "../config/firebase";
+import {
+  getRedirectResult,
+  signInWithCredential,
+  GoogleAuthProvider,
+} from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, googleProvider, db } from "../config/firebase";
-import { firebaseService } from "../services/firebaseService";
-import { Leaf, CheckCircle, Loader, AlertTriangle } from "lucide-react";
-
-const STATUS = {
-  CHECKING: "checking",
-  SIGNING_IN: "signing_in",
-  SUCCESS: "success",
-  ERROR: "error",
-};
+import { Leaf, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 
 const AuthCallback = () => {
-  const [status, setStatus] = useState(STATUS.CHECKING);
-  const [userName, setUserName] = useState("");
-  const [error, setError] = useState("");
+  const navigate = useNavigate();
+  const [status, setStatus] = useState("loading"); // loading, success, error
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    const run = async () => {
+    const handleRedirectResult = async () => {
       try {
-        // ── Step 1: Check if returning from Google redirect ──────────────
+        console.log("Processing redirect result...");
         const result = await getRedirectResult(auth);
 
         if (result?.user) {
-          // ── Step 2: Ensure user profile exists in Firestore ─────────────
-          const user = result.user;
-          let profile = await firebaseService.getUserProfile(user.uid);
-          if (!profile) {
-            profile = {
-              fullname: user.displayName || user.email.split("@")[0],
-              email: user.email,
-              role: "student",
-              ecoPoints: 0,
-              badge: "Eco Rookie",
-              profilePicture: user.photoURL || null,
-            };
-            await firebaseService.createUserProfile(user.uid, profile);
-          }
+          console.log("User authenticated:", result.user.uid);
 
-          // ── Step 3: Get the ID token and write a short-lived auth session
-          //    document to Firestore. The APK polls this document.         ──
-          const idToken = await user.getIdToken();
-          const sessionId = sessionStorage.getItem("apkSessionId") || "";
+          // Get the session ID from URL if present
+          const urlParams = new URLSearchParams(window.location.search);
+          const sessionId = urlParams.get("session");
 
           if (sessionId) {
-            await setDoc(doc(db, "apk_auth_sessions", sessionId), {
-              uid: user.uid,
-              idToken,
-              email: user.email,
-              displayName: user.displayName || profile.fullname,
-              photoURL: user.photoURL || null,
-              createdAt: serverTimestamp(),
-              // Auto-expire after 5 minutes (your Cloud Function or
-              // client-side cleanup can delete this document afterwards)
-              expiresAt: Date.now() + 5 * 60 * 1000,
+            console.log("Session ID found:", sessionId);
+
+            // Write the session data to Firestore for the WebView to pick up
+            const sessionRef = doc(db, "apk_auth_sessions", sessionId);
+            await setDoc(sessionRef, {
+              uid: result.user.uid,
+              email: result.user.email,
+              displayName: result.user.displayName,
+              photoURL: result.user.photoURL,
+              timestamp: serverTimestamp(),
+              expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes expiry
             });
+            console.log("Session document written to Firestore");
           }
 
-          setUserName(user.displayName || user.email.split("@")[0]);
-          setStatus(STATUS.SUCCESS);
+          setStatus("success");
 
-          // Sign out from this browser tab — the session lives in the APK
-          // (comment this out if you also want the user logged in on web)
-          await signOut(auth);
+          // Try to close the tab/window if possible
+          setTimeout(() => {
+            // For WebView: send a message back
+            if (window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(
+                JSON.stringify({
+                  type: "AUTH_SUCCESS",
+                  user: {
+                    uid: result.user.uid,
+                    email: result.user.email,
+                    displayName: result.user.displayName,
+                  },
+                }),
+              );
+            }
+
+            // Redirect to dashboard after 2 seconds
+            setTimeout(() => {
+              window.location.href = "/dashboard";
+            }, 2000);
+          }, 1000);
         } else {
-          // ── No redirect result yet → start the Google redirect ──────────
-          // Read the session ID passed by the APK in the URL
-          const params = new URLSearchParams(window.location.search);
-          const sessionId = params.get("session");
-          if (sessionId) {
-            sessionStorage.setItem("apkSessionId", sessionId);
-          }
-
-          setStatus(STATUS.SIGNING_IN);
-          await signInWithRedirect(auth, googleProvider);
+          console.log("No redirect result found");
+          setStatus("error");
+          setErrorMessage("No user data found. Please try signing in again.");
         }
-      } catch (err) {
-        console.error("Auth callback error:", err);
-        setError(err.message || "Something went wrong.");
-        setStatus(STATUS.ERROR);
+      } catch (error) {
+        console.error("Redirect result error:", error);
+        setStatus("error");
+        setErrorMessage(
+          error.message || "Authentication failed. Please try again.",
+        );
       }
     };
 
-    run();
-  }, []);
+    handleRedirectResult();
+  }, [navigate]);
 
-  // ── UI ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-green-50 via-white to-green-50">
-      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-10 max-w-sm w-full text-center">
-        {/* Logo */}
-        <div className="flex justify-center mb-6">
-          <div className="w-14 h-14 bg-gradient-to-br from-green-600 to-green-700 rounded-2xl flex items-center justify-center shadow-lg">
-            <Leaf className="w-7 h-7 text-white" />
-          </div>
-        </div>
-
-        {status === STATUS.CHECKING && (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-green-100">
+      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full mx-4 text-center">
+        {status === "loading" && (
           <>
-            <Loader className="w-8 h-8 text-green-600 animate-spin mx-auto mb-4" />
-            <h2 className="text-lg font-semibold text-gray-800 mb-2">
-              Checking…
-            </h2>
-            <p className="text-sm text-gray-500">Just a moment</p>
-          </>
-        )}
-
-        {status === STATUS.SIGNING_IN && (
-          <>
-            <Loader className="w-8 h-8 text-green-600 animate-spin mx-auto mb-4" />
-            <h2 className="text-lg font-semibold text-gray-800 mb-2">
-              Redirecting to Google…
-            </h2>
-            <p className="text-sm text-gray-500">
-              Sign in with your Google account. You'll be brought back here when
-              done.
-            </p>
-          </>
-        )}
-
-        {status === STATUS.SUCCESS && (
-          <>
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="w-8 h-8 text-green-600" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Signed in!</h2>
-            <p className="text-sm text-gray-500 mb-1">
-              Welcome,{" "}
-              <span className="font-semibold text-green-700">{userName}</span>
-            </p>
-            <p className="text-sm text-gray-400 mt-4">
-              Return to the app — you'll be logged in automatically.
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-2">
-              <div
-                className="w-2 h-2 bg-green-400 rounded-full animate-bounce"
-                style={{ animationDelay: "0ms" }}
-              />
-              <div
-                className="w-2 h-2 bg-green-400 rounded-full animate-bounce"
-                style={{ animationDelay: "150ms" }}
-              />
-              <div
-                className="w-2 h-2 bg-green-400 rounded-full animate-bounce"
-                style={{ animationDelay: "300ms" }}
-              />
-            </div>
-          </>
-        )}
-
-        {status === STATUS.ERROR && (
-          <>
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-8 h-8 text-red-500" />
+            <div className="flex justify-center mb-4">
+              <div className="relative">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+                </div>
+              </div>
             </div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">
-              Sign-in Failed
+              Completing Sign In...
             </h2>
-            <p className="text-sm text-gray-500 mb-4">{error}</p>
+            <p className="text-gray-500">
+              Please wait while we verify your account.
+            </p>
+          </>
+        )}
+
+        {status === "success" && (
+          <>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                <CheckCircle className="w-8 h-8 text-green-600" />
+              </div>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">
+              Successfully Signed In!
+            </h2>
+            <p className="text-gray-500">Redirecting you to the dashboard...</p>
+            <div className="mt-4 w-full bg-gray-200 rounded-full h-1.5">
+              <div
+                className="bg-green-600 h-1.5 rounded-full animate-pulse"
+                style={{ width: "100%" }}
+              ></div>
+            </div>
+          </>
+        )}
+
+        {status === "error" && (
+          <>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertCircle className="w-8 h-8 text-red-600" />
+              </div>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">
+              Sign In Failed
+            </h2>
+            <p className="text-gray-500 mb-4">{errorMessage}</p>
             <button
-              onClick={() => window.location.reload()}
-              className="w-full bg-green-600 text-white font-medium py-2.5 rounded-xl hover:bg-green-700 transition-colors"
+              onClick={() => (window.location.href = "/login")}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
-              Try Again
+              Back to Login
             </button>
           </>
         )}
+
+        <div className="mt-6 flex items-center justify-center gap-2">
+          <Leaf size={16} className="text-green-500" />
+          <span className="text-xs text-gray-400">GreenLoop Campus</span>
+        </div>
       </div>
     </div>
   );
